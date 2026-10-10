@@ -27,6 +27,8 @@ export interface VirtualRows {
   viewportHeight: number
   /** Scroll the minimum amount needed to show row `index` fully ("nearest"); no-op if it already is. */
   scrollToIndex: (index: number) => void
+  /** Move scrollTop by `delta` px and commit the new window in the same frame. */
+  scrollBy: (delta: number) => void
 }
 
 /** What the last render was based on. Only replaced when it would change the rendered rows. */
@@ -134,6 +136,16 @@ export function useVirtualRows({
     [scrollRef, measure],
   )
 
+  const scrollBy = useCallback(
+    (delta: number) => {
+      const el = scrollRef.current
+      if (!el || delta === 0) return
+      el.scrollTop += delta
+      measure()
+    },
+    [scrollRef, measure],
+  )
+
   const viewportHeight = effectiveHeight(snapshot.viewportHeight)
   const { start, end, totalHeight } = computeVirtualRange({
     scrollTop: snapshot.scrollTop,
@@ -143,5 +155,5 @@ export function useVirtualRows({
     overscan,
   })
 
-  return { start, end, totalHeight, viewportHeight, scrollToIndex }
+  return { start, end, totalHeight, viewportHeight, scrollToIndex, scrollBy }
 }

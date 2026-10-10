@@ -16,12 +16,15 @@ import { EmptyState } from '../components/feedback/EmptyState'
 import { ErrorState } from '../components/feedback/ErrorState'
 import { SlowNotice } from '../components/feedback/SlowNotice'
 import { AppHeader } from '../components/Header/AppHeader'
+import { LiveToggle } from '../components/Live/LiveToggle'
+import { NewEventsPill } from '../components/Live/NewEventsPill'
 import { ShortcutsDialog } from '../components/ShortcutsDialog'
 import { Toolbar } from '../components/Toolbar/Toolbar'
 import { Button } from '../components/ui/Button'
 import { InboxIcon } from '../components/ui/icons'
 import { useEventDetail, useEventList } from '../hooks/useEvents'
 import { useExplorerUrlState } from '../hooks/useExplorerUrlState'
+import { useLiveEvents } from '../hooks/useLiveEvents'
 import { DOCKED_PANEL_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
 import { panelWidthStyle, usePanelWidth } from '../hooks/usePanelWidth'
 import { useSlowFlag } from '../hooks/useSlowFlag'
@@ -113,6 +116,24 @@ export default function ExplorerPage() {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
+  // --- Live mode ------------------------------------------------------------------------------
+  // New events go straight in only when that can't disturb anyone: the list is at the top, the
+  // pointer isn't over it and focus isn't in it. Otherwise they wait behind the "new events" pill.
+  const [liveOn, setLiveOn] = useState(false)
+  const pointerInListRef = useRef(false)
+  const canInsertNow = useCallback(() => {
+    if (pointerInListRef.current) return false
+    if (document.activeElement?.closest('[role="grid"]')) return false
+    return tableRef.current?.isAtTop() ?? true
+  }, [])
+  const live = useLiveEvents(liveOn, filters, canInsertNow)
+  // Set when the user asks for the waiting events: once they are in, show the newest one.
+  const revealNewestRef = useRef(false)
+  const showNewEvents = useCallback(() => {
+    revealNewestRef.current = true
+    void live.showPending()
+  }, [live])
+
   // id -> position in the loaded rows: the panel's summary and its prev/next neighbours.
   const indexById = useMemo(() => new Map(rows.map((row, index) => [row.id, index])), [rows])
   const openIndex = eventId === null ? undefined : indexById.get(eventId)
@@ -136,6 +157,15 @@ export default function ExplorerPage() {
     requestedIdsRef.current = position === -1 ? [] : requested.slice(position + 1)
     if (eventId !== null) lastOpenIdRef.current = requestedIdsRef.current.at(-1) ?? eventId
   }, [eventId])
+
+  // The pill disappears once clicked; move focus to the newest row so keyboard users land
+  // somewhere sensible (focusRow also scrolls it into view).
+  useLayoutEffect(() => {
+    const newest = rows[0]
+    if (!revealNewestRef.current || !newest || live.pendingCount > 0) return
+    revealNewestRef.current = false
+    tableRef.current?.focusRow(newest.id)
+  }, [rows, live.pendingCount])
 
   const step = useCallback(
     (delta: 1 | -1) => {
@@ -347,7 +377,10 @@ export default function ExplorerPage() {
 
   return (
     <div className="flex h-dvh flex-col bg-bg text-fg">
-      <AppHeader onOpenShortcuts={() => setShortcutsOpen(true)} />
+      <AppHeader
+        onOpenShortcuts={() => setShortcutsOpen(true)}
+        actions={<LiveToggle on={liveOn} status={live.status} onToggle={() => setLiveOn((on) => !on)} />}
+      />
       <Toolbar
         filters={filters}
         onQueryChange={setQuery}
@@ -366,7 +399,16 @@ export default function ExplorerPage() {
       <div ref={layoutRef} style={panelWidthStyle(panelWidth.width)} className="flex min-h-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col px-4 pt-4 md:px-6">
           {listSlow && <SlowNotice onRetry={retrySlow} className="mb-3 shrink-0" />}
-          {listContent}
+          <div
+            className="relative flex min-h-0 flex-1 flex-col"
+            onPointerEnter={() => (pointerInListRef.current = true)}
+            onPointerLeave={() => (pointerInListRef.current = false)}
+          >
+            {liveOn && (
+              <NewEventsPill count={live.pendingCount} needsRefresh={live.needsRefresh} onShow={showNewEvents} />
+            )}
+            {listContent}
+          </div>
         </main>
         {docked && panel && (
           <ResizeHandle

@@ -25,6 +25,8 @@ export interface EventTableHandle {
   focusRow(id: string): boolean
   /** Focus the active row (the grid's Tab stop). No-op while there are no rows. */
   focusTable(): void
+  /** True when the list is scrolled to (about) the top. */
+  isAtTop(): boolean
 }
 
 export interface EventTableProps {
@@ -107,7 +109,7 @@ export function EventTable({
   ref,
 }: EventTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const { start, end, totalHeight, viewportHeight, scrollToIndex } = useVirtualRows({
+  const { start, end, totalHeight, viewportHeight, scrollToIndex, scrollBy } = useVirtualRows({
     count: rows.length,
     scrollRef,
   })
@@ -193,6 +195,24 @@ export function EventTable({
     followedIdRef.current = selectedId
   }, [resetKey, selectedId, scrollToIndex])
 
+  // --- Rows added above (live mode) ----------------------------------------------------------
+  // When new events are prepended, keep the same event as the active row, and if the user has
+  // scrolled, move scrollTop by the added rows so the rows on screen stay exactly where they were.
+  const previousRef = useRef({ firstId: rows[0]?.id, length: rows.length, resetKey, isStale })
+  useLayoutEffect(() => {
+    const previous = previousRef.current
+    previousRef.current = { firstId: rows[0]?.id, length: rows.length, resetKey, isStale }
+    // New filters, or the placeholder rows being swapped for the real ones, give a different
+    // list, not new rows on top.
+    if (previous.resetKey !== resetKey || previous.isStale || isStale) return
+    if (previous.firstId === undefined || rows[0]?.id === previous.firstId) return
+    const added = rows.findIndex((row) => row.id === previous.firstId)
+    if (added <= 0 || rows.length - previous.length !== added) return
+    // oxlint-disable-next-line react/set-state-in-effect
+    setActiveIndex((index) => index + added)
+    if ((scrollRef.current?.scrollTop ?? 0) > 0) scrollBy(added * ROW_HEIGHT)
+  }, [rows, resetKey, isStale, scrollBy])
+
   // --- Follow the selection when it changes from outside -------------------------------------
   // Panel prev/next buttons, back/forward and a cold load of a shared link change selectedId
   // without going through the grid. Point the active row at it and bring it into view, once per
@@ -253,6 +273,9 @@ export function EventTable({
       },
       focusTable() {
         if (active >= 0) moveFocusTo(active)
+      },
+      isAtTop() {
+        return (scrollRef.current?.scrollTop ?? 0) < ROW_HEIGHT / 2
       },
     }),
     [rows, active, moveFocusTo],
@@ -356,7 +379,11 @@ export function EventTable({
           </div>
         )}
 
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]">
+        {/* overflow-anchor: none, because prepended rows are anchored by hand (see above). */}
+        <div
+          ref={scrollRef}
+          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable]"
+        >
           {isInitialLoading ? (
             <div role="row">
               <div role="gridcell">
