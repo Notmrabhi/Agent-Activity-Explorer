@@ -120,19 +120,24 @@ export default function ExplorerPage() {
   // New events go straight in only when that can't disturb anyone: the list is at the top, the
   // pointer isn't over it and focus isn't in it. Otherwise they wait behind the "new events" pill.
   const [liveOn, setLiveOn] = useState(false)
-  const pointerInListRef = useRef(false)
+  // :hover rather than pointerenter/leave bookkeeping, which can miss a transition and then
+  // insert under a pointer that is resting on the list.
+  const listAreaRef = useRef<HTMLDivElement>(null)
   const canInsertNow = useCallback(() => {
-    if (pointerInListRef.current) return false
+    if (listAreaRef.current?.matches(':hover')) return false
     if (document.activeElement?.closest('[role="grid"]')) return false
     return tableRef.current?.isAtTop() ?? true
   }, [])
   const live = useLiveEvents(liveOn, filters, canInsertNow)
   // Set when the user asks for the waiting events: once they are in, show the newest one.
   const revealNewestRef = useRef(false)
+  const { showPending } = live
   const showNewEvents = useCallback(() => {
     revealNewestRef.current = true
-    void live.showPending()
-  }, [live])
+    void showPending().then((shown) => {
+      if (!shown) revealNewestRef.current = false
+    })
+  }, [showPending])
 
   // id -> position in the loaded rows: the panel's summary and its prev/next neighbours.
   const indexById = useMemo(() => new Map(rows.map((row, index) => [row.id, index])), [rows])
@@ -160,12 +165,13 @@ export default function ExplorerPage() {
 
   // The pill disappears once clicked; move focus to the newest row so keyboard users land
   // somewhere sensible (focusRow also scrolls it into view).
+  const eventsWaiting = live.pendingCount > 0 || live.needsRefresh
   useLayoutEffect(() => {
     const newest = rows[0]
-    if (!revealNewestRef.current || !newest || live.pendingCount > 0) return
+    if (!revealNewestRef.current || !newest || eventsWaiting) return
     revealNewestRef.current = false
     tableRef.current?.focusRow(newest.id)
-  }, [rows, live.pendingCount])
+  }, [rows, eventsWaiting])
 
   const step = useCallback(
     (delta: 1 | -1) => {
@@ -401,12 +407,16 @@ export default function ExplorerPage() {
           {listSlow && <SlowNotice onRetry={retrySlow} className="mb-3 shrink-0" />}
           <div
             className="relative flex min-h-0 flex-1 flex-col"
-            onPointerEnter={() => (pointerInListRef.current = true)}
-            onPointerLeave={() => (pointerInListRef.current = false)}
+            ref={listAreaRef}
           >
-            {liveOn && (
-              <NewEventsPill count={live.pendingCount} needsRefresh={live.needsRefresh} onShow={showNewEvents} />
-            )}
+            {/* Always mounted so its live region can announce; shows nothing while live is off. */}
+            <NewEventsPill
+              count={liveOn ? live.pendingCount : 0}
+              needsRefresh={liveOn && live.needsRefresh}
+              refreshing={live.refreshing}
+              failed={liveOn && live.refreshFailed}
+              onShow={showNewEvents}
+            />
             {listContent}
           </div>
         </main>

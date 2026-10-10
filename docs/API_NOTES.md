@@ -34,9 +34,15 @@ All error bodies share the shape `{ "error": string }`.
 - Repeated `agent` params work (`agent=a&agent=b` = OR).
 - CORS: `Access-Control-Allow-Origin` echoes the localhost origin.
 
+## /stream (SSE)
+- On every connect it first replays roughly its last 20 events, some of them already in `GET /events` and a few out of timestamp order. `Last-Event-ID` is ignored, so nothing missed while disconnected is replayed beyond that.
+- It fails at random like the other endpoints (500 on connect, or a dropped connection).
+- Streamed events are stored: they show up in `GET /events` afterwards.
+
 ## Design consequences
 1. Retry 5xx / network errors (2 retries, exponential backoff). Never retry 4xx.
 2. A failed *next page* must not wipe the rows already loaded: show an inline "couldn't load more · Retry" row.
 3. The detail panel has distinct loading / error+retry / not-found states.
 4. Agent filter failure must not break the page: show it as degraded with retry.
 5. Use `limit=100` per page: fewer round trips than 50, and still fast to render.
+6. Live mode can't trust the stream alone: on every (re)connect and filter change it fetches the first page and merges it (dedupe by id, timestamp order), and reloads when that page doesn't reach the cached rows.
