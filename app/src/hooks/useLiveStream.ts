@@ -5,19 +5,28 @@ import type { EventSummary } from '../api/types'
 
 export type LiveStatus = 'off' | 'connecting' | 'live' | 'reconnecting'
 
-const MAX_BACKOFF_MS = 30_000
+const MAX_BACKOFF_MS = 10_000
 
 /**
  * Subscribes to GET /stream (Server-Sent Events) while `enabled`.
  *
  * EventSource retries dropped connections by itself, but gives up for good when the server
  * answers with an error status, which this API does at random. So when it closes we reconnect
- * ourselves with exponential backoff, and reset the backoff once a connection opens.
+ * ourselves with exponential backoff, and reset the backoff once a connection opens. Coming
+ * back online or to the tab retries at once.
+ *
+ * `onOpen` runs on every (re)connect: the stream doesn't replay what was missed while it was
+ * down (or off), so the caller catches up from the API.
  */
-export function useLiveStream(enabled: boolean, onEvent: (event: EventSummary) => void): LiveStatus {
+export function useLiveStream(
+  enabled: boolean,
+  onEvent: (event: EventSummary) => void,
+  onOpen: () => void,
+): LiveStatus {
   // Starts as 'connecting'; while disabled the hook reports 'off' regardless.
   const [status, setStatus] = useState<LiveStatus>('connecting')
   const handleEvent = useEffectEvent(onEvent)
+  const handleOpen = useEffectEvent(onOpen)
 
   useEffect(() => {
     if (!enabled) return
@@ -31,6 +40,7 @@ export function useLiveStream(enabled: boolean, onEvent: (event: EventSummary) =
       source.onopen = () => {
         backoff = 1000
         setStatus('live')
+        handleOpen()
       }
       source.onmessage = (message: MessageEvent<string>) => {
         let data: unknown
@@ -52,10 +62,22 @@ export function useLiveStream(enabled: boolean, onEvent: (event: EventSummary) =
       }
     }
 
+    // Only while waiting out a backoff (no source).
+    const retryNow = () => {
+      if (stopped || source || document.visibilityState !== 'visible') return
+      window.clearTimeout(retryTimer)
+      backoff = 1000
+      connect()
+    }
+
     connect()
+    window.addEventListener('online', retryNow)
+    document.addEventListener('visibilitychange', retryNow)
     return () => {
       stopped = true
       window.clearTimeout(retryTimer)
+      window.removeEventListener('online', retryNow)
+      document.removeEventListener('visibilitychange', retryNow)
       source?.close()
       setStatus('connecting')
     }
