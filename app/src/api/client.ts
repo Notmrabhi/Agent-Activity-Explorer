@@ -75,7 +75,7 @@ export async function apiGet<T>(
   }
 
   if (!response.ok) {
-    const message = readErrorMessage(body) ?? response.statusText ?? 'Request failed'
+    const message = readErrorMessage(body) || response.statusText || 'Request failed'
     throw new ApiError('http', message, response.status)
   }
   if (!guard(body)) {
