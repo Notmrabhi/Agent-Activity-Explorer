@@ -28,6 +28,8 @@ Chrome 154, 1440x900, Incognito (no extensions). "My Chrome" numbers come from m
 
 Lighthouse performance score (my Chrome, Incognito): 61 → 98.
 
+Verified the same on Firefox and Edge as well.
+
 Entries 1-6, 12 and 13 are what I saw myself in Chrome DevTools (screenshots below). Entries 7-11 and 14-17 were measured in the automated runs.
 
 ## Problems
@@ -61,7 +63,7 @@ Entries 1-6, 12 and 13 are what I saw myself in Chrome DevTools (screenshots bel
 - Fix: Building the 100,000 events, sorting them, counting per agent and per minute, and searching all moved to a Web Worker (`js/data-worker.js`). The main thread only renders the 200 rows it gets back; an older search answer arriving late is ignored.
 - Before / after: Main-thread time for load + typing + scrolling 23,627 ms → 426 ms (my Chrome). The ~3 s freeze after load is gone.
 
-### 4. Scrolling the list is janky
+### 4. Scrolling the list is Broken
 - Symptom: Scrolling the list stuttered and sometimes stopped for a moment.
 - How I found it: Performance panel while scrolling. Every scroll event was a long task with red corners and many layout blocks.
 
@@ -152,7 +154,7 @@ Entries 1-6, 12 and 13 are what I saw myself in Chrome DevTools (screenshots bel
 
 ### 15. Web font found late
 - Symptom: Text appeared late or changed after loading.
-- How I found it: Network panel. Before, the font was not among the first requests; now it is the second request. The automated run measured when the request starts.
+- How I found it: Network panel. Before, the font was not among the first requests, now it is the second request. The automated run measured when the request starts.
 
   ![After: font is the second request](docs/perf/after/03-network-images-css-font.png)
 - Root cause: The browser only finds the font after reading the CSS and laying out text, and by default it hides text until the font arrives.
