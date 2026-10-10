@@ -68,7 +68,9 @@ describe('serializeExplorerParams', () => {
 
 describe('hasActiveFilters', () => {
   it('ignores a search of only spaces', () => {
-    expect(hasActiveFilters({ q: '  ', agents: [], status: null, from: null, to: null })).toBe(false)
+    expect(hasActiveFilters({ q: '  ', agents: [], status: null, from: null, to: null })).toBe(
+      false,
+    )
   })
 
   it('is true for any one filter', () => {
