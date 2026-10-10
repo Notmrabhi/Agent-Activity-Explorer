@@ -196,8 +196,7 @@ export function EventTable({
   }, [resetKey, selectedId, scrollToIndex])
 
   // --- Rows added above (live mode) ----------------------------------------------------------
-  // When new events are prepended, keep the same event as the active row, and if the user has
-  // scrolled, move scrollTop by the added rows so the rows on screen stay exactly where they were.
+  // Rows added above: keep the reader's place; a reader idle at the top stays on the newest row.
   const previousRef = useRef({ firstId: rows[0]?.id, length: rows.length, resetKey, isStale })
   useLayoutEffect(() => {
     const previous = previousRef.current
@@ -207,11 +206,13 @@ export function EventTable({
     if (previous.resetKey !== resetKey || previous.isStale || isStale) return
     if (previous.firstId === undefined || rows[0]?.id === previous.firstId) return
     const added = rows.findIndex((row) => row.id === previous.firstId)
-    if (added <= 0 || rows.length - previous.length !== added) return
+    if (added <= 0 || rows.length - previous.length < added) return
+    const scrolled = (scrollRef.current?.scrollTop ?? 0) > 0
+    const picked = scrollRef.current?.contains(document.activeElement) === true || selectedId !== null
     // oxlint-disable-next-line react/set-state-in-effect
-    setActiveIndex((index) => index + added)
-    if ((scrollRef.current?.scrollTop ?? 0) > 0) scrollBy(added * ROW_HEIGHT)
-  }, [rows, resetKey, isStale, scrollBy])
+    if (scrolled || picked) setActiveIndex((index) => index + added)
+    if (scrolled) scrollBy(added * ROW_HEIGHT)
+  }, [rows, resetKey, isStale, selectedId, scrollBy])
 
   // --- Follow the selection when it changes from outside -------------------------------------
   // Panel prev/next buttons, back/forward and a cold load of a shared link change selectedId

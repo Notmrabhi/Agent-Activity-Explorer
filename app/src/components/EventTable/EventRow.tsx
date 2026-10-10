@@ -38,7 +38,10 @@ export const EventRow = memo(function EventRow({ event, index, top, selected, ac
       aria-selected={selected}
       tabIndex={active ? 0 : -1}
       data-index={index}
-      onClick={() => {
+      onClick={(event) => {
+        // A drag that selected text inside the row is not a click.
+        const selection = window.getSelection()
+        if (selection && !selection.isCollapsed && event.currentTarget.contains(selection.anchorNode)) return
         onActivate(index)
         onOpen(index)
       }}
