@@ -21,10 +21,11 @@ These rules apply to anyone, human or AI, changing code here. AI output is treat
 - Components are presentational where possible: data hooks are called in `pages/ExplorerPage.tsx` or in a container component, then passed down as props.
 
 ## Components and styling
-- One component per file, PascalCase, in `components/<Area>/`. Each component's CSS is a co-located `*.module.css`.
-- **Bootstrap is used for layout only** (reboot, grid, flex/spacing utilities, `visually-hidden`), imported selectively in `styles/bootstrap.scss`. No Bootstrap JS, no react-bootstrap, no Bootstrap component classes (`btn`, `card`, `dropdown`…).
-- **Colours, radii, shadows, font sizes and motion come only from `styles/tokens.css`** custom properties. No hex or rgb values in component CSS.
-- Spacing uses the 4px scale (`--space-1`…`--space-6`, or Bootstrap `gap-2`, `p-3` etc., which are remapped to the same scale).
+- One component per file, PascalCase, in `components/<Area>/`.
+- **Styling is Tailwind v4 utilities.** `styles/tokens.css` *is* the Tailwind theme: the default palette, type scale, radii and shadows are removed, so only token utilities exist (`bg-surface`, `text-muted`, `border-control`, `text-data`, `rounded-md`, `shadow-panel`). Never use arbitrary colour values (`bg-[#fff]`) or inline colour styles.
+- Dark mode needs no `dark:` variants: the same CSS variables are redefined under `prefers-color-scheme: dark`.
+- Spacing uses Tailwind's 4px scale (`p-2` = 8px, `gap-3` = 12px). Arbitrary pixel values only for layout sizes that come from a token (`h-(--row-height)`, `w-(--panel-width)`).
+- Long class lists are a sign to extract a small component (`Button`, `FilterButton`, `StatusBadge`), not to add a CSS file. Plain CSS only for what utilities can't express (`@utility skeleton`, keyframes) in `styles/global.css`.
 - Status is always colour + icon + word (`StatusBadge`), never colour alone.
 
 ## UX contract (every data view)
@@ -37,8 +38,8 @@ These rules apply to anyone, human or AI, changing code here. AI output is treat
 - Semantic elements first (`button`, `input`, `label`, `fieldset`). ARIA only where HTML has no equivalent (grid, dialog).
 - Every interactive element is keyboard reachable with a visible `:focus-visible` outline (`--focus-ring`).
 - Async status changes are announced via a polite live region.
-- Respect `prefers-reduced-motion` (tokens set durations to 0) and `prefers-color-scheme`.
-- Text contrast ≥ 4.5:1 and control borders ≥ 3:1 (ratios are documented in `docs/DESIGN.md`).
+- Respect `prefers-reduced-motion` (global rule in `styles/global.css`; use `motion-safe:` for decorative motion) and `prefers-color-scheme`.
+- Text contrast ≥ 4.5:1 and control borders ≥ 3:1 (ratios are documented in `styles/tokens.css` and `docs/DESIGN.md`). Control outlines use `border-control`; `border-border` is for decorative dividers only.
 
 ## Before committing
 - `npm run typecheck && npm run lint && npm test` in `app/` must pass.

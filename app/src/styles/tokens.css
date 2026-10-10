@@ -1,87 +1,111 @@
 /*
- * Design tokens — the single source of colour, type, spacing, radius and motion.
- * Values are copied from the design canvas (docs/DESIGN.md). Contrast ratios in comments are
- * WCAG 2.x, computed against --surface unless stated.
+ * Design tokens = the Tailwind theme. Values are copied from the design canvas (docs/DESIGN.md).
+ *
+ * Tailwind's default palette, type scale and radii are removed (`initial`), so only these
+ * tokens exist as utilities: `bg-surface`, `text-muted`, `border-control`, `rounded-md`…
+ * A raw colour like `bg-blue-500` simply does not compile.
+ *
+ * Dark mode redefines the same variables under prefers-color-scheme, so every utility follows
+ * the OS setting with no `dark:` variants in components.
+ * Contrast ratios (WCAG 2.x, against --color-surface unless stated) were computed, not estimated.
  */
-:root {
-  color-scheme: light;
+@theme {
+  --color-*: initial;
+  --color-bg: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-sunken: #f0f2f5;
+  --color-hover: #f7f8fa;
+  --color-border: #dfe3e8; /* decorative dividers */
+  --color-control: #848d9b; /* input/button outlines, 3.35:1 */
+  --color-fg: #141821; /* 17.8:1 */
+  --color-muted: #596372; /* 6.08:1 */
+  --color-subtle: #6a7383; /* 4.78:1 */
+  --color-accent: #2f5bea; /* 5.52:1, also white-on-accent */
+  --color-accent-hover: #2448c7;
+  --color-accent-text: #2448c7; /* links, JSON keys, 7.43:1 */
+  --color-accent-soft: #eaf0fe;
+  --color-on-accent: #ffffff;
+  --color-selected: #eaf0fe;
+  --color-code: #f7f8fa;
+  --color-scrim: rgb(13 16 21 / 0.32);
+  --color-skeleton: #e9ecf0;
+  --color-skeleton-shine: #f4f6f8;
+  --color-ok: #17734a; /* on ok-bg 5.12:1 */
+  --color-ok-bg: #e5f3eb;
+  --color-blocked: #8a5000; /* on blocked-bg 5.81:1 */
+  --color-blocked-bg: #fdf1d8;
+  --color-error: #c2261a; /* on error-bg 5.04:1, on surface 5.86:1 */
+  --color-error-bg: #fceae8;
+  --color-warning: #6b3e00; /* slow notice text, 8.57:1 */
+  --color-warning-bg: #fff8e8;
+  --color-warning-border: #c79a45;
 
-  /* Colour — light */
-  --bg: #f5f6f8;
-  --surface: #ffffff;
-  --surface-sunken: #f0f2f5;
-  --surface-hover: #f7f8fa;
-  --border: #dfe3e8; /* decorative dividers */
-  --border-control: #848d9b; /* input/button outlines, 3.35:1 */
-  --text: #141821; /* 17.8:1 */
-  --text-muted: #596372; /* 6.08:1 */
-  --text-subtle: #6a7383; /* 4.78:1 */
-  --accent: #2f5bea; /* 5.52:1, also white-on-accent */
-  --accent-hover: #2448c7;
-  --accent-text: #2448c7; /* links, JSON keys, 7.43:1 */
-  --accent-soft: #eaf0fe;
-  --on-accent: #ffffff;
-  --row-selected: #eaf0fe;
-  --code-bg: #f7f8fa;
-  --scrim: rgb(13 16 21 / 0.32);
-  --skeleton: #e9ecf0;
-  --skeleton-shine: #f4f6f8;
+  --font-*: initial;
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
 
-  --ok-fg: #17734a; /* on ok-bg 5.12:1 */
-  --ok-bg: #e5f3eb;
-  --blocked-fg: #8a5000; /* on blocked-bg 5.81:1 */
-  --blocked-bg: #fdf1d8;
-  --error-fg: #c2261a; /* on error-bg 5.04:1, on surface 5.86:1 */
-  --error-bg: #fceae8;
-  --warning-fg: #6b3e00; /* slow notice, 8.57:1 */
-  --warning-bg: #fff8e8;
-  --warning-border: #c79a45;
+  --text-*: initial;
+  --text-xs: 0.75rem; /* 12 — column headers, badges */
+  --text-xs--line-height: 1.4;
+  --text-sm: 0.8125rem; /* 13 — secondary, controls */
+  --text-sm--line-height: 1.45;
+  --text-base: 0.875rem; /* 14 — body, table cells */
+  --text-base--line-height: 1.45;
+  --text-lg: 1rem; /* 16 — section titles, app name */
+  --text-lg--line-height: 1.4;
+  --text-xl: 1.375rem; /* 22 — page titles */
+  --text-xl--line-height: 1.3;
+  --text-data: 0.78125rem; /* 12.5 — mono data in rows */
+  --text-data--line-height: 1.4;
 
+  --radius-*: initial;
+  --radius-sm: 4px; /* kbd, chips, policy tags */
+  --radius-md: 6px; /* controls */
+  --radius-lg: 10px; /* surfaces */
+  --radius-full: 9999px; /* lozenges, avatars */
+
+  --shadow-*: initial;
   --shadow-panel: -8px 0 24px rgb(16 24 40 / 0.08);
   --shadow-popover: 0 8px 24px rgb(16 24 40 / 0.14);
   --shadow-segment: 0 1px 2px rgb(16 24 40 / 0.12);
 
-  /* Type */
-  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
-  --text-xs: 0.75rem; /* 12 */
-  --text-sm: 0.8125rem; /* 13 */
-  --text-md: 0.875rem; /* 14 — body */
-  --text-lg: 1rem; /* 16 */
-  --text-xl: 1.375rem; /* 22 */
-  --text-mono: 0.78125rem; /* 12.5 */
-  --weight-regular: 400;
-  --weight-medium: 500;
-  --weight-semibold: 600;
-  --leading: 1.45;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  /* Spacing — 4px scale, mirrored into Bootstrap $spacers */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
+  /* Panel docks beside the list from this width; below it overlays the list. */
+  --breakpoint-dock: 75rem; /* 1200px → `dock:` variant */
 
-  /* Radius */
-  --radius-sm: 4px; /* kbd, chips */
-  --radius-md: 6px; /* controls */
-  --radius-lg: 10px; /* surfaces */
-  --radius-pill: 999px;
+  --animate-shimmer: shimmer 1.4s ease-in-out infinite;
+  --animate-spin: spin 0.9s linear infinite;
+  --animate-panel-in: panel-in 200ms var(--ease-out);
 
-  /* Sizing */
+  @keyframes shimmer {
+    0% {
+      background-position: 100% 0;
+    }
+    100% {
+      background-position: -100% 0;
+    }
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes panel-in {
+    from {
+      transform: translateX(24px);
+      opacity: 0;
+    }
+  }
+}
+
+/* Non-theme tokens (not utilities). */
+:root {
+  color-scheme: light;
   --row-height: 40px; /* must match ROW_HEIGHT in lib/virtual.ts */
   --control-height: 36px;
   --panel-width: 460px;
-
-  /* Motion */
   --duration-fast: 120ms;
-  --duration-panel: 200ms;
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-
-  /* Focus */
-  --focus-ring: 2px solid var(--accent);
-  --focus-offset: 2px;
 }
 
 @media (pointer: coarse), (max-width: 1024px) {
@@ -90,41 +114,37 @@
   }
 }
 
-/* Colour — dark (follows the OS setting) */
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-
-    --bg: #0d1015;
-    --surface: #141920;
-    --surface-sunken: #0f1318;
-    --surface-hover: #181e26;
-    --border: #252c36;
-    --border-control: #646e7c; /* 3.42:1 */
-    --text: #e6e9ed; /* 14.5:1 */
-    --text-muted: #9ba5b3; /* 7.08:1 */
-    --text-subtle: #8a94a3; /* 5.75:1 */
-    --accent: #7c9bff; /* 6.72:1 */
-    --accent-hover: #a9bcff;
-    --accent-text: #a9bcff; /* 9.52:1 */
-    --accent-soft: rgb(124 155 255 / 0.14);
-    --on-accent: #0d1015; /* 7.25:1 */
-    --row-selected: #1b2436;
-    --code-bg: #0f1318;
-    --scrim: rgb(0 0 0 / 0.5);
-    --skeleton: #1f2630;
-    --skeleton-shine: #283039;
-
-    --ok-fg: #4cc38a; /* 6.35:1 on its bg */
-    --ok-bg: rgb(76 195 138 / 0.13);
-    --blocked-fg: #f2b550; /* 7.50:1 */
-    --blocked-bg: rgb(242 181 80 / 0.13);
-    --error-fg: #ff7b6e; /* 5.73:1 */
-    --error-bg: rgb(255 123 110 / 0.13);
-    --warning-fg: #f2c67a;
-    --warning-bg: rgb(242 181 80 / 0.1);
-    --warning-border: rgb(242 181 80 / 0.45);
-
+    --color-bg: #0d1015;
+    --color-surface: #141920;
+    --color-sunken: #0f1318;
+    --color-hover: #181e26;
+    --color-border: #252c36;
+    --color-control: #646e7c; /* 3.42:1 */
+    --color-fg: #e6e9ed; /* 14.5:1 */
+    --color-muted: #9ba5b3; /* 7.08:1 */
+    --color-subtle: #8a94a3; /* 5.75:1 */
+    --color-accent: #7c9bff; /* 6.72:1 */
+    --color-accent-hover: #a9bcff;
+    --color-accent-text: #a9bcff; /* 9.52:1 */
+    --color-accent-soft: rgb(124 155 255 / 0.14);
+    --color-on-accent: #0d1015; /* 7.25:1 */
+    --color-selected: #1b2436;
+    --color-code: #0f1318;
+    --color-scrim: rgb(0 0 0 / 0.5);
+    --color-skeleton: #1f2630;
+    --color-skeleton-shine: #283039;
+    --color-ok: #4cc38a; /* 6.35:1 on its bg */
+    --color-ok-bg: rgb(76 195 138 / 0.13);
+    --color-blocked: #f2b550; /* 7.50:1 */
+    --color-blocked-bg: rgb(242 181 80 / 0.13);
+    --color-error: #ff7b6e; /* 5.73:1 */
+    --color-error-bg: rgb(255 123 110 / 0.13);
+    --color-warning: #f2c67a;
+    --color-warning-bg: rgb(242 181 80 / 0.1);
+    --color-warning-border: rgb(242 181 80 / 0.45);
     --shadow-panel: -12px 0 32px rgb(0 0 0 / 0.45);
     --shadow-popover: 0 12px 32px rgb(0 0 0 / 0.55);
     --shadow-segment: 0 1px 2px rgb(0 0 0 / 0.5);
@@ -134,6 +154,5 @@
 @media (prefers-reduced-motion: reduce) {
   :root {
     --duration-fast: 0ms;
-    --duration-panel: 0ms;
   }
 }

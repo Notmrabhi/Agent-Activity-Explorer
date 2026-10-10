@@ -1,61 +1,59 @@
-/* App-wide base styles. Loaded after bootstrap.scss so tokens win over Bootstrap defaults. */
-:root {
-  --bs-body-bg: var(--bg);
-  --bs-body-color: var(--text);
-  --bs-body-font-family: var(--font-sans);
-  --bs-body-font-size: var(--text-md);
-  --bs-body-line-height: var(--leading);
-  --bs-border-color: var(--border);
-  --bs-link-color-rgb: initial;
+/* Entry stylesheet: Tailwind, our tokens (the theme), then a few base rules. */
+@import 'tailwindcss';
+@import './tokens.css';
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: var(--color-accent-text);
+    text-underline-offset: 2px;
+  }
+
+  a:hover {
+    color: var(--color-accent-hover);
+  }
+
+  /* Focus rings for keyboard users only. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+  }
+
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
 }
 
-html,
-body,
-#root {
-  height: 100%;
-}
-
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-sans);
-  font-size: var(--text-md);
-  line-height: var(--leading);
-  -webkit-font-smoothing: antialiased;
-}
-
-a {
-  color: var(--accent-text);
-}
-
-a:hover {
-  color: var(--accent-hover);
-}
-
-code,
-kbd,
-pre,
-samp {
-  font-family: var(--font-mono);
-}
-
-/* Only show focus rings for keyboard users. */
-:focus {
-  outline: none;
-}
-
-:focus-visible {
-  outline: var(--focus-ring);
-  outline-offset: var(--focus-offset);
-}
-
-button {
-  font: inherit;
-  color: inherit;
-}
-
-::selection {
-  background: var(--accent-soft);
+/* Skeleton shimmer, used by <Skeleton>. Disabled under reduced motion below. */
+@utility skeleton {
+  background-color: var(--color-skeleton);
+  background-image: linear-gradient(
+    90deg,
+    var(--color-skeleton) 0%,
+    var(--color-skeleton-shine) 50%,
+    var(--color-skeleton) 100%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
 }
 
 @media (prefers-reduced-motion: reduce) {
