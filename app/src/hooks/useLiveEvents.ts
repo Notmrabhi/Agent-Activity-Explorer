@@ -20,6 +20,9 @@ const MAX_PENDING = 500
 /** With a search active, how often the server is asked for new matches while events arrive. */
 const SEARCH_CHECK_MS = 3000
 
+/** Stream events arriving within this window are added to the list together. */
+const BATCH_MS = 250
+
 export interface LiveEvents {
   status: LiveStatus
   /** New events waiting to be shown. */
@@ -187,16 +190,24 @@ export function useLiveEvents(
     receive(view, held.events)
   }
 
-  const handlers = useRef({ applyHead, catchUp, flushHeld })
+  const handlers = useRef({ applyHead, catchUp, flushHeld, receive })
   useLayoutEffect(() => {
-    handlers.current = { applyHead, catchUp, flushHeld }
+    handlers.current = { applyHead, catchUp, flushHeld, receive }
   })
 
   const checkTimerRef = useRef(0)
+  // Stream events are collected and added once per BATCH_MS: one list update instead of one per event.
+  const batchRef = useRef<{ view: string; events: EventSummary[]; timer: number }>({
+    view,
+    events: [],
+    timer: 0,
+  })
   useEffect(
     () => () => {
       window.clearTimeout(checkTimerRef.current)
       checkTimerRef.current = 0
+      window.clearTimeout(batchRef.current.timer)
+      batchRef.current = { view: '', events: [], timer: 0 }
     },
     [view],
   )
@@ -206,7 +217,16 @@ export function useLiveEvents(
     (event) => {
       if (!matchesFilters(event, filters)) return
       if (canMergeLocally(filters)) {
-        receive(view, [event])
+        const batch = batchRef.current
+        if (batch.view !== view) batchRef.current = { view, events: [], timer: 0 }
+        batchRef.current.events.push(event)
+        if (batchRef.current.timer === 0) {
+          batchRef.current.timer = window.setTimeout(() => {
+            const { view: forView, events } = batchRef.current
+            batchRef.current = { view: forView, events: [], timer: 0 }
+            handlers.current.receive(forView, events)
+          }, BATCH_MS)
+        }
       } else if (checkTimerRef.current === 0) {
         checkTimerRef.current = window.setTimeout(() => {
           checkTimerRef.current = 0
