@@ -1,0 +1,78 @@
+// Bootstrap is used for layout only: reboot, containers, grid, helpers and a trimmed set of
+// utilities. Colours, type and components come from tokens.css and CSS modules.
+
+// Spacing scale mirrors --space-1..6 in tokens.css (4px base).
+$spacer: 1rem;
+$spacers: (
+  0: 0,
+  1: 4px,
+  2: 8px,
+  3: 12px,
+  4: 16px,
+  5: 24px,
+  6: 32px,
+);
+
+// Dark mode is driven by prefers-color-scheme in tokens.css, not by data-bs-theme.
+$enable-dark-mode: false;
+$enable-smooth-scroll: false;
+$font-family-sans-serif: var(--font-sans);
+$font-family-monospace: var(--font-mono);
+
+@import 'bootstrap/scss/functions';
+@import 'bootstrap/scss/variables';
+@import 'bootstrap/scss/variables-dark';
+@import 'bootstrap/scss/maps';
+@import 'bootstrap/scss/mixins';
+@import 'bootstrap/scss/utilities';
+
+// Ship only the utility groups we use instead of Bootstrap's full ~250 groups.
+$keep-utilities: (
+  'display',
+  'flex',
+  'flex-direction',
+  'flex-grow',
+  'flex-shrink',
+  'flex-wrap',
+  'justify-content',
+  'align-items',
+  'align-self',
+  'gap',
+  'row-gap',
+  'column-gap',
+  'margin',
+  'margin-x',
+  'margin-y',
+  'margin-top',
+  'margin-end',
+  'margin-bottom',
+  'margin-start',
+  'padding',
+  'padding-x',
+  'padding-y',
+  'padding-top',
+  'padding-end',
+  'padding-bottom',
+  'padding-start',
+  'overflow',
+  'position',
+  'width',
+  'height',
+  'min-viewport-height',
+  'text-align',
+  'white-space'
+);
+$filtered-utilities: ();
+@each $key in $keep-utilities {
+  @if map-has-key($utilities, $key) {
+    $filtered-utilities: map-merge($filtered-utilities, ($key: map-get($utilities, $key)));
+  }
+}
+$utilities: $filtered-utilities;
+
+@import 'bootstrap/scss/root';
+@import 'bootstrap/scss/reboot';
+@import 'bootstrap/scss/containers';
+@import 'bootstrap/scss/grid';
+@import 'bootstrap/scss/helpers';
+@import 'bootstrap/scss/utilities/api';
