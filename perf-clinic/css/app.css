@@ -190,6 +190,11 @@ main {
   align-items: stretch;
 }
 
+/* Keeps the sections below off-screen until the cards are rendered. */
+.agent-grid:empty {
+  min-height: 100vh;
+}
+
 .agent-card {
   min-height: 220px;
   padding: 16px;

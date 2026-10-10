@@ -33,7 +33,6 @@ function countByAgent(events) {
 }
 
 function renderAgents() {
-  const counts = countByAgent(window.ACTIVITY);
   grid.innerHTML = window.AGENTS.map((agent, index) => {
     const image = 'assets/agents/agent-' + String((index % 6) + 1).padStart(2, '0') + '.webp';
     return (
@@ -42,10 +41,17 @@ function renderAgents() {
       '<h3>' + escapeHtml(agent.name) + '</h3>' +
       '<p class="agent-owner">' + escapeHtml(agent.owner) + '</p>' +
       '<p class="agent-description">' + escapeHtml(agent.description) + '</p>' +
-      '<p class="agent-count">' + (counts[agent.name] || 0).toLocaleString() + ' calls today</p>' +
+      '<p class="agent-count">&nbsp;</p>' +
       '</article>'
     );
   }).join('');
+}
+
+function renderAgentCounts() {
+  const counts = countByAgent(window.ACTIVITY);
+  grid.querySelectorAll('.agent-count').forEach((cell, index) => {
+    cell.textContent = (counts[window.AGENTS[index].name] || 0).toLocaleString() + ' calls today';
+  });
 }
 
 const MAX_VIEWED = 5000;
@@ -304,14 +310,16 @@ resultsList.addEventListener('touchstart', hidePreview, { passive: true });
 backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 tickerToggle.addEventListener('click', () => (tickerPanel ? closeTicker() : openTicker()));
 
-// Build data and render after the first paint.
+renderAgents();
+
 function start() {
   window.ACTIVITY = window.buildActivity(100000);
   buildSearchIndex();
   countCallsPerMinute();
   window.ACTIVITY.forEach((event) => eventsById.set(event.id, event));
-  renderAgents();
+  renderAgentCounts();
   renderResults(searchInput.value);
   ready = true;
 }
+// Build data and render the list after the first paint.
 requestAnimationFrame(() => setTimeout(start, 0));
