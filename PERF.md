@@ -2,160 +2,185 @@
 
 ## How I measured
 
-Chrome 154, 1440x900 viewport, fresh browser and empty cache for every run. Interactions and the load trace ran with 4x CPU throttling. Lighthouse used its own mobile and desktop presets. Every number is the median of 3 runs. I automated the runs with Playwright and the Chrome DevTools Protocol so they are repeatable. Each finding shows up in the DevTools panel named in its entry. A smoke check confirmed the page shows the same data and results before and after each fix.
+Chrome 154, 1440x900, Incognito (no extensions). "My Chrome" numbers come from my own recordings in the DevTools Performance, Network and Lighthouse panels, without CPU throttling; the screenshots are in `docs/perf/before` and `docs/perf/after`. "4x CPU" numbers come from repeatable automated runs (Playwright + Chrome DevTools Protocol, 4x CPU slowdown, median of 3 runs) that I used to re-verify each fix.
 
 ## Summary
 
-Ordered by how much a user feels it.
+| #   | Problem                                    | Before                                  | After                           |
+|-----|--------------------------------------------|-----------------------------------------|---------------------------------|
+| 1   | Blank screen on load                       | first frame 18.8 s (my Chrome)          | content at ~0.4 s (my Chrome)   |
+| 2   | Typing freezes the page                    | one keypress = 12.42 s task (my Chrome) | no long tasks while typing      |
+| 3   | Page busy for seconds after it appears     | main-thread time 23,627 ms (my Chrome)  | 426 ms (my Chrome)              |
+| 4   | Scrolling is janky                         | scroll handlers 18,980 ms (4x CPU)      | 17.7 ms (4x CPU)                |
+| 5   | Text fitting forces layout (resize freeze) | 5,686 forced layouts (4x CPU)           | 4 (4x CPU)                      |
+| 6   | Hero image is 4.2 MB                       | 4,271 kB (my Chrome)                    | 208 kB (my Chrome)              |
+| 7   | Card heights cause layout thrash           | 576 forced layouts, 4,319 ms (4x CPU)   | 0                               |
+| 8   | Wheel scroll waits for JavaScript          | 694 ms wheel delay (4x CPU)             | 83 ms (4x CPU)                  |
+| 9   | Hover tooltip lags                         | 29.6 ms per mouse move (4x CPU)         | 0.94 ms (4x CPU)                |
+| 10  | Live ticker leaks after closing            | 5 timers left running, +1,611 DOM nodes | 0 timers, +15 nodes             |
+| 11  | localStorage written once per row          | 2,000 writes per 10 searches            | 10 writes                       |
+| 12  | Oversized and duplicate avatars            | 12 files, 153-169 kB each (my Chrome)   | 6 files, ~1 kB each (my Chrome) |
+| 13  | Unused render-blocking theme.css           | 327 kB (my Chrome)                      | removed                         |
+| 14  | Alert strip animation causes layout        | 93 layouts per second while idle        | 0                               |
+| 15  | Web font found late                        | requested at 1,634 ms (4x CPU)          | at 20 ms                        |
+| 16  | Slow time formatting                       | 1,369 ms per 2,000 rows (4x CPU)        | 2.4 ms                          |
+| 17  | Layout shift after my first fix            | CLS 0.049 (Lighthouse mobile)           | 0                               |
 
-| # | Problem | Before | After |
-|---|---|---|---|
-| 1 | Blank screen on load | FCP 20,160 ms | FCP 1,396 ms |
-| 2 | Typing in search freezes | slowest key 11,232 ms | slowest key 80 ms |
-| 3 | Scrolling is janky | 18,980 ms in scroll handlers | 17.9 ms |
-| 4 | Page unresponsive right after load | longest task 18,318 ms | 1,851 ms |
-| 5 | Resize freezes (text fitting) | 5,686 forced layouts | 12 |
-| 6 | Heavy hero image | 4.27 MB, mobile LCP 27.8 s | 208 KB, mobile LCP 2.0 s |
-| 7 | Card height layout thrash | 4,319 ms | 0 ms |
-| 8 | Wheel waits for JavaScript | 694 ms wheel delay | 70 ms |
-| 9 | Hover tooltip lags | 29.6 ms per mousemove | 0.94 ms |
-| 10 | Live ticker leaks | 5 intervals after close | 0 |
-| 11 | localStorage write per row | 2,000 calls | 10 calls |
-| 12 | Oversized, duplicate avatars | 1.94 MB | 6.8 KB |
-| 13 | Unused theme.css | 333 KB CSS | 6 KB CSS |
-| 14 | Marquee not composited | 93 layouts/s | 0 layouts/s |
-| 15 | Font found late | requested at 1,634 ms | at 20 ms |
-| 16 | Slow time formatting | 1,369 ms | 2.4 ms |
-| 17 | Layout shift from my P1 fix | CLS 0.049 | CLS 0 |
+Lighthouse performance score (my Chrome, Incognito): 61 → 98.
+
+Entries 1-6, 12 and 13 are what I saw myself in Chrome DevTools (screenshots below). Entries 7-11 and 14-17 were measured in the automated runs.
 
 ## Problems
 
-### 1. Blank screen for 20 seconds on load
-- **Symptom:** The page stays white for about 20 seconds before anything shows.
-- **How I found it:** Performance panel load recording at 4x CPU. `js/config.js` was render-blocking and its Evaluate Script took about 1 s, then `app.js` ran one 18 s task. The FCP marker sat at 20 s. Lighthouse listed `config.js` under render-blocking requests.
-- **Root cause:** `config.js` was a blocking script in `<head>` that built all 100,000 events inline. `app.js` then rendered everything before the first paint.
-- **Fix:** Both scripts are `defer`. `config.js` only defines `buildActivity` (same seed, same data). `app.js` builds the data and renders the list after the first frame.
-- **Before / after:** First Contentful Paint 20,160 ms → 1,396 ms (in-browser trace, 4x CPU).
+### 1. Blank screen on load
+- Symptom: When I opened the page it stayed empty for almost 19 seconds before anything showed.
+- How I found it: Performance panel, record and reload. The Frames row showed one frame of 18.8 seconds, and FCP only appeared at about 19 seconds.
+
+  ![Before: load trace](docs/perf/before/02-load-and-keypress.png)
+  ![After: load, typing and scrolling](docs/perf/after/02-load-keypress-scroll-with-worker.png)
+- Root cause: The browser was still reading the HTML when it ran the scripts, and the scripts built 100,000 events and rendered the whole list before the page could be drawn.
+- Fix: Both scripts use `defer`. `config.js` no longer builds the 100,000 events while the HTML is parsed; the page shell paints first and the data is built afterwards (in a Web Worker, see #3).
+- Before / after: First frame 18.8 s → content visible at about 0.4 s (my Chrome). FCP 20,160 ms → 1,396 ms (4x CPU). Lighthouse 61 → 98.
 
 ### 2. Typing in the search box freezes the page
-- **Symptom:** Each key takes about a second to appear, and the first keys can hang for over 10 seconds.
-- **How I found it:** Performance panel while typing "stripe" at 4x CPU. Every keypress was a long "Event: input" task. Bottom-Up showed the filter callback (`JSON.stringify` + `toLowerCase`) and the sort comparator (`new Date`) at the top.
-- **Root cause:** On every key the input handler stringified all 100k events, sorted them with two `Date` objects per comparison, and re-rendered the list.
-- **Fix:** Events are sorted once at startup. The lowercase JSON text of each event is cached and built in small 5 ms tasks after the first render. Input is debounced by 150 ms. Matches and order are unchanged.
-- **Before / after:** Slowest keystroke 11,232 ms → 80 ms. Last key to results 874 ms → 347 ms.
+- Symptom: After typing one letter in the search box, nothing happened for many seconds.
+- How I found it: Performance panel while typing. One keypress made a single task of 12.42 seconds. Bottom-up showed the sort function with `new Date` (app.js:86), `JSON.stringify` (app.js:85) and Layout at the top.
 
-### 3. Scrolling the list is janky
-- **Symptom:** The list freezes for up to a second at a time while scrolling with the wheel.
-- **How I found it:** Performance panel recording of wheel scrolling at 4x CPU. Each "Event: scroll" task ran about 540 ms in `onScroll`, with forced layouts from `getBoundingClientRect` on every row and an `Array.filter` over all events. The Frames track showed 110 dropped frames.
-- **Root cause:** `onScroll` ran on every scroll event. It toggled `.in-focus` on all 200 rows and read `getBoundingClientRect` after each write. It also counted calls in the focused minute by filtering all 100k events.
-- **Fix:** The work runs once per frame in `requestAnimationFrame`, reads before writes. Row offsets are measured once per render or resize. Calls per minute are counted once into a Map. Only rows that change are toggled. The progress bar uses `transform: scaleX`.
-- **Before / after:** Scroll handler time 18,980 ms → 17.9 ms for 40 wheel steps. Dropped frames 110 → 43. TBT 19,238 ms → 152 ms.
+  ![Before: one keypress, 12.42 s task](docs/perf/before/03-keypress-long-task-12s.png)
+  ![Before: Bottom-up for that keypress](docs/perf/before/04-keypress-bottom-up.png)
+- Root cause: On every key the code turned all 100,000 events into text, sorted them again with two Date objects per comparison, and redrew the list.
+- Fix: Events are sorted once by a numeric timestamp, the lowercase search text of each event is built once, and searching runs in a Web Worker. Input waits 150 ms after the last key. Results and order are identical to the original.
+- Before / after: One keypress: 12.42 s long task → no long tasks while typing (my Chrome). Slowest keystroke 11,232 ms → 80 ms (4x CPU).
 
-### 4. Page does not respond right after load
-- **Symptom:** Clicks and typing do nothing for a long time after the page appears.
-- **How I found it:** Performance panel load trace. One long task (red corner) covered the data build and first render, 18.3 s at 4x CPU.
-- **Root cause:** The data build, the sort, the per-minute counts and the first render (with `fitSummaries` layouts) all ran in one task.
-- **Fix:** Covered by fixes 1, 2 and 5: the work moved after first paint, and the sort and text fitting got cheap. The data build itself is still one task after first paint.
-- **Before / after:** Longest task 18,318 ms → 1,851 ms. Total blocking time during load 46,234 ms → 4,377 ms.
+### 3. Page is busy for seconds after it appears
+- Symptom: After my first fixes the page showed quickly, but for about 3 more seconds it did not react.
+- How I found it: Performance panel on the fixed page. There was still one long task right after load where the data was built, and the Summary showed a lot of main-thread time.
 
-### 5. Resizing the window freezes the page
-- **Symptom:** First render, each search and each window resize freeze for seconds.
-- **How I found it:** Performance panel during a window resize. `fitSummaries` produced thousands of forced Layout events, each from reading `scrollWidth` right after setting `fontSize`.
-- **Root cause:** For each of 200 cells it set the font size and read `scrollWidth`/`clientWidth` right away, up to 7 times. That is a forced layout per step per cell.
-- **Fix:** Batched: write all cells, then read all cells, per pass, starting from a proportional guess. Resize refits at most once per frame. Final sizes are the same.
-- **Before / after:** Forced layouts over 4 resizes 5,686 → 12. TBT 7,845 ms → 758 ms.
+  ![After first fixes: still a ~3 s task after load](docs/perf/after/01-load-keypress-scroll-before-worker.png)
+- Root cause: Even after the first paint, building and searching 100,000 events still ran on the main thread, the same thread that handles clicks and typing.
+- Fix: Building the 100,000 events, sorting them, counting per agent and per minute, and searching all moved to a Web Worker (`js/data-worker.js`). The main thread only renders the 200 rows it gets back; an older search answer arriving late is ignored.
+- Before / after: Main-thread time for load + typing + scrolling 23,627 ms → 426 ms (my Chrome). The ~3 s freeze after load is gone.
+
+### 4. Scrolling the list is janky
+- Symptom: Scrolling the list stuttered and sometimes stopped for a moment.
+- How I found it: Performance panel while scrolling. Every scroll event was a long task with red corners and many layout blocks.
+
+  ![Before: load and scrolling](docs/perf/before/01-load-and-scroll.png)
+- Root cause: On every scroll event the code measured all 200 rows one by one and counted through all 100,000 events again.
+- Fix: Scroll work runs at most once per frame (`requestAnimationFrame`), reads before writes. Row positions are measured once per render. Calls per minute are counted once. The progress bar uses `transform`.
+- Before / after: Scroll handler time 18,980 ms → 17.7 ms, dropped frames 110 → 48, blocking time 19,238 ms → 25 ms (4x CPU).
+
+### 5. Text fitting forces layout again and again
+- Symptom: The page froze when the list was drawn and when I resized the window.
+- How I found it: Performance panel. I zoomed in on the purple Layout blocks and Chrome showed a "Forced reflow" warning pointing to app.js line 116, where it reads `scrollWidth`.
+
+  ![Before: forced reflow in fitSummaries](docs/perf/before/05-forced-reflow-fitsummaries.png)
+- Root cause: For each row it changed the font size and right away asked how wide the text was, so the browser had to recalculate the layout every time, many times per row.
+- Fix: `fitSummaries` measures text with an off-screen canvas (`measureText`, no layout) and reads the column width once, then sets each row's size. Same sizes as before for all 200 rows.
+- Before / after: Forced layouts during 4 window resizes 5,686 → 4, blocking time 7,845 ms → 58 ms (4x CPU).
 
 ### 6. Hero image is 4.2 MB
-- **Symptom:** On a phone the big hero image shows up very late.
-- **How I found it:** Network panel, Img filter sorted by size: `hero.png` was 4.2 MB for a 1376x769 slot. Lighthouse flagged image delivery and gave mobile LCP 27.8 s.
-- **Root cause:** A lossless 1700x950 PNG for a photo-like image, the same file for every screen size, with no width/height.
-- **Fix:** `<picture>` with AVIF and WebP at 960w and 1700w (`srcset` + `sizes`) and a JPEG fallback. Added width/height and `fetchpriority="high"`.
-- **Before / after:** Hero bytes 4,271,130 → 207,629. Lighthouse mobile LCP 27,758 ms → 1,964 ms.
+- Symptom: The big image at the top loaded slowly.
+- How I found it: Network panel, sorted by size. hero.png was 4,271 kB.
+
+  ![Before: Network panel](docs/perf/before/06-network-images-css-font.png)
+  ![After: Network panel](docs/perf/after/03-network-images-css-font.png)
+- Root cause: It was a huge lossless PNG, the same file for every screen size.
+- Fix: `<picture>` with AVIF and WebP at 960 and 1700 px wide (`srcset` + `sizes`) and a JPEG fallback; width and height set; `fetchpriority="high"`.
+- Before / after: 4,271 kB → 208 kB (my Chrome). Lighthouse mobile LCP 27.8 s → 2.0 s.
 
 ### 7. Agent cards cause layout thrash
-- **Symptom:** Load and resize stall while the agent cards jump to equal heights.
-- **How I found it:** Performance panel: `equalizeCardHeights` ran 24 times during load (once per image load) with 576 forced layouts flagged "Forced reflow".
-- **Root cause:** For every card it cleared the height and then read `offsetTop`/`offsetHeight` of all 24 cards, mixing writes and reads. It ran on every image load and resize.
-- **Fix:** CSS grid handles it. `align-items: stretch` gives equal heights and `min-height: 220px` keeps the minimum. The JS and its listeners are removed.
-- **Before / after:** Time in `equalizeCardHeights` during load 4,319 ms (576 forced layouts) → 0 ms.
+- Symptom: The agent cards jumped while the page loaded.
+- How I found it: Automated run, Performance trace during load: `equalizeCardHeights` ran 24 times with forced reflows.
+- Root cause: It measured every card against every other card, and it did that again each time an image loaded.
+- Fix: Equal card heights now come from CSS grid (`align-items: stretch` + `min-height: 220px`); `equalizeCardHeights` and its listeners are removed.
+- Before / after: 576 forced layouts and 4,319 ms during load → 0 (4x CPU).
 
 ### 8. Wheel scroll waits for JavaScript
-- **Symptom:** The list does not move until the main thread is free.
-- **How I found it:** Performance panel showed wheel events queued on the main thread. Lighthouse flagged non-passive listeners. `getEventListeners(#results)` in the Console showed `passive: false`.
-- **Root cause:** `wheel` and `touchstart` on `#results`, and `scroll` on window, were added without `{ passive: true }`, so scrolling had to wait for JS.
-- **Fix:** Registered them as passive.
-- **Before / after:** Median wheel delay 694 ms → 70 ms.
+- Symptom: The mouse wheel felt sticky; the page moved late.
+- How I found it: Automated run: wheel events waited for the main thread, and the listeners on the list were not passive. Lighthouse also lists non-passive listeners.
+- Root cause: The wheel and touch listeners were not passive, so the browser had to wait for JavaScript before scrolling.
+- Fix: The `wheel`, `touchstart` and `scroll` listeners are registered with `{ passive: true }`.
+- Before / after: Median wheel delay 694 ms → 83 ms (4x CPU).
 
 ### 9. Hover tooltip lags behind the mouse
-- **Symptom:** Moving the mouse over the rows stutters and the preview trails the cursor.
-- **How I found it:** Performance panel while moving over rows. Each "Event: mousemove" ran `showPreview` with an `Array.find` over all events, about 30 ms each at 4x CPU. 106 dropped frames.
-- **Root cause:** `showPreview` searched 100k events by id on every mousemove and moved the tooltip with `top`/`left`.
-- **Fix:** A Map by id built once. Text is only rewritten when the row changes. The tooltip moves with `transform`.
-- **Before / after:** Average mousemove handler 29.6 ms → 0.94 ms. Dropped frames 106 → 1.
+- Symptom: The tooltip trailed behind the mouse over the rows.
+- How I found it: Automated run, Performance trace while moving the mouse over rows: each mouse move was a slow event in `showPreview`.
+- Root cause: Every mouse move searched through all 100,000 events to find the row's event.
+- Fix: A Map from id to event for the rows on screen; the tooltip moves with `transform`. It also hides on any scroll, so it never shows the wrong row.
+- Before / after: 29.6 ms → 0.94 ms per mouse move (4x CPU).
 
-### 10. Live ticker leaks after closing
-- **Symptom:** After opening and closing the ticker a few times, the page keeps working in the background and memory grows.
-- **How I found it:** Memory panel heap snapshots before and after 5 open/close cycles showed detached `<li>` nodes kept by `renderedTickerRows`. Performance monitor showed DOM nodes climbing.
-- **Root cause:** `closeTicker` removed the panel but never cleared the interval or removed the resize/keydown listeners. Every row ever shown stayed in a Map.
-- **Fix:** Clear the interval and remove listeners (AbortController) on close. Dropped the row cache.
-- **Before / after:** Intervals still running after 5 cycles 5 → 0. DOM node growth 1,611 → 15.
+### 10. Live ticker keeps running after it is closed
+- Symptom: After opening and closing "Show live calls" a few times, the page got slower.
+- How I found it: Automated run: after 5 open/close cycles the timers were still running and DOM nodes kept growing (the same thing the Performance monitor shows).
+- Root cause: Closing the ticker never stopped its timer or removed its listeners, so every open added more.
+- Fix: Closing clears the interval and removes the resize and keydown listeners (AbortController). No cache of every row ever shown.
+- Before / after: After 5 open/close cycles: timers still running 5 → 0, DOM nodes added 1,611 → 15.
 
 ### 11. localStorage written once per row
-- **Symptom:** Every render and search blocks on storage writes.
-- **How I found it:** Performance panel Bottom-Up during searches showed `setItem` and `JSON.stringify` inside `rememberViewed`. Counting `setItem` calls gave 200 per render.
-- **Root cause:** `rememberViewed` called `localStorage.setItem` inside the per-row loop, and `loadViewed` re-parsed the list every render.
-- **Fix:** A Set loaded once, one `setItem` per render only when something changed, list capped at 5,000 ids.
-- **Before / after:** 10 searches: 2,000 `setItem` calls (999 ms) → 10 calls (7 ms).
+- Symptom: Every search felt a little slower, and the saved data kept growing.
+- How I found it: Automated run: counted the `setItem` calls during 10 searches and watched the stored list grow.
+- Root cause: The code saved the whole list to localStorage once for every row, 200 times per search.
+- Fix: Viewed ids are kept in a Set and written once per render, capped at 5,000.
+- Before / after: 2,000 → 10 `setItem` calls for 10 searches (999 ms → 7 ms, 4x CPU).
 
 ### 12. Oversized and duplicate avatars
-- **Symptom:** Card images load slowly on mobile.
-- **How I found it:** Network panel: 12 PNGs of about 160 KB each. Hovering in Elements showed 320x320 images drawn at 48x48. Hashing the files showed 07-12 were identical to 01-06.
-- **Root cause:** 320 px PNGs used at 48 px, and six byte-identical copies under different names.
-- **Fix:** Six 96 px WebP files (2x density) reused for all cards, with width/height.
-- **Before / after:** Avatar bytes 1,937,110 (968,555 duplicate) → 6,792 (0 duplicate).
+- Symptom: The page downloaded much more than it showed.
+- How I found it: Network panel. 12 avatar PNGs of about 160 kB each for 48 px images, and half of them had exactly the same size as the other half.
 
-### 13. Unused, render-blocking theme.css
-- **Symptom:** First paint waits for a stylesheet the page does not use.
-- **How I found it:** Coverage tab: `css/theme.css` 100% unused. Lighthouse "Reduce unused CSS".
-- **Root cause:** A utility-class stylesheet linked in `<head>` with none of its classes in use.
-- **Fix:** Removed the `<link>` and the file.
-- **Before / after:** Stylesheet bytes 332,635 → 6,167.
+  ![Before: Network panel](docs/perf/before/06-network-images-css-font.png)
+  ![After: Network panel](docs/perf/after/03-network-images-css-font.png)
+- Root cause: 320 px images were used for a 48 px spot, and 6 files were copies of the other 6.
+- Fix: Six 96 px WebP files (twice the 48 px display size), reused for all 24 cards, with width and height set.
+- Before / after: 12 files of 153-169 kB → 6 files of about 1 kB (my Chrome). 1.94 MB → 6.8 kB in total.
 
-### 14. Alert marquee keeps the main thread busy
-- **Symptom:** The page is busy even when idle, and scrolling competes with the alert strip.
-- **How I found it:** Performance panel idle recording showed Layout and Paint every frame from the marquee. Rendering > Paint flashing lit up the strip. Lighthouse flagged a non-composited animation.
-- **Root cause:** The keyframes animated `left`, which cannot run on the compositor.
-- **Fix:** Animate `transform: translateX` with the same distances, and pause it for `prefers-reduced-motion`.
-- **Before / after:** 93.1 layouts/s → 0 layouts/s while idle (now runs on the compositor).
+### 13. Unused render-blocking theme.css
+- Symptom: The page waited for a big stylesheet before showing anything.
+- How I found it: Network panel showed theme.css at 327 kB. The Coverage check in the automated run showed 100% of it unused.
+
+  ![Before: Network panel with theme.css](docs/perf/before/06-network-images-css-font.png)
+- Root cause: A utility stylesheet was linked in the head, but the page used none of its classes.
+- Fix: Removed the `<link>` and the file.
+- Before / after: 327 kB of CSS → 0 (my Chrome).
+
+### 14. Alert strip animation runs layout every frame
+- Symptom: The page was busy even when I did nothing.
+- How I found it: Automated run: a 3-second idle trace showed layout and paint every frame caused by the alert strip.
+- Root cause: The animation moved the strip with `left`, which makes the browser redo layout every frame.
+- Fix: The keyframes animate `transform: translateX` instead of `left`, with the same distances; paused under `prefers-reduced-motion`.
+- Before / after: 93 layouts per second while idle → 0 (4x CPU).
 
 ### 15. Web font found late
-- **Symptom:** Text stays invisible until the font arrives.
-- **How I found it:** Network panel waterfall: `ibm-plex-sans.woff2` was requested only after CSS parse and layout. Lighthouse font-display check.
-- **Root cause:** The font is only discovered when text is laid out, and the default `font-display` hides text.
-- **Fix:** `<link rel="preload" as="font" crossorigin>` and `font-display: swap`.
-- **Before / after:** Font request start 1,634 ms → 20 ms.
+- Symptom: Text appeared late or changed after loading.
+- How I found it: Network panel. Before, the font was not among the first requests; now it is the second request. The automated run measured when the request starts.
 
-### 16. Slow timestamp formatting
-- **Symptom:** Rendering rows spends visible time on timestamps.
-- **How I found it:** Performance panel Bottom-Up: `formatTime` had 1,914 ms self time over 10 searches.
-- **Root cause:** `toLocaleTimeString` with options builds an Intl formatter on every call, 200 times per render.
-- **Fix:** Timestamps are UTC ISO strings, so `iso.slice(11, 19)` gives the same HH:MM:SS. Output checked identical for all 2,000 inputs.
-- **Before / after:** 2,000 calls at 4x CPU 1,369 ms → 2.4 ms.
+  ![After: font is the second request](docs/perf/after/03-network-images-css-font.png)
+- Root cause: The browser only finds the font after reading the CSS and laying out text, and by default it hides text until the font arrives.
+- Fix: `<link rel="preload" as="font" crossorigin>` and `font-display: swap`.
+- Before / after: Font request starts at 1,634 ms → 20 ms (4x CPU).
 
-### 17. Layout shift after deferring the render
-- **Symptom:** On a phone the "Recent tool calls" section jumped down when the cards appeared. My fix for problem 1 caused this.
-- **How I found it:** Lighthouse mobile: CLS 0.049, "Avoid large layout shifts" pointed at the section.
-- **Root cause:** With the render deferred, the agent grid was empty at first layout, so the section below moved when cards arrived.
-- **Fix:** The empty grid reserves the space. Cards render as soon as `app.js` runs; counts fill in after the data build.
-- **Before / after:** Mobile CLS 0 (original) / 0.049 (after fix 1) → 0.
+### 16. Slow time formatting
+- Symptom: Rendering the rows took longer than it should.
+- How I found it: Automated run, CPU profile: `formatTime` had noticeable self time while searching.
+- Root cause: `toLocaleTimeString` creates a date formatter for every row, but the time is already inside the timestamp string.
+- Fix: Timestamps are UTC ISO strings, so `iso.slice(11, 19)` gives the same HH:MM:SS.
+- Before / after: 1,369 ms → 2.4 ms for 2,000 calls (4x CPU).
 
-## Trade-offs
+### 17. Layout shift after my first fix
+- Symptom: On a phone-sized screen, the "Recent tool calls" section jumped down when the cards appeared.
+- How I found it: Lighthouse mobile in the automated run showed CLS 0.049 and pointed to that section.
+- Root cause: When I delayed the rendering, the card area was empty at first, so the content below moved when the cards arrived.
+- Fix: The agent cards render as soon as the page loads (counts are filled in later), so the sections below no longer jump.
+- Before / after: Lighthouse mobile CLS 0.049 → 0.
 
-- Lighthouse Total Blocking Time went up (desktop 0 → 136 ms, mobile 151 → 911 ms) even though the page feels far faster. The data build moved from before first paint into the window Lighthouse counts. Scores still rose: desktop 68 → 98, mobile 61 → 78. Next step would be building the data in a Web Worker.
-- JS heap is about 61 MB instead of 29 MB. Most of it is the cached search text for 100k events. I traded memory for typing speed; a smaller index (only the fields people search) would cut it, but would change which queries match.
+## Lighthouse
+
+![Before: Lighthouse 61](docs/perf/before/07-lighthouse-61.png)
+![After: Lighthouse 98](docs/perf/after/04-lighthouse-98.png)
 
 ## Also noticed (left as is)
 
-- The scroll highlight marks 5-6 rows at once because the focus band is 30-60% of the viewport. I kept it so before and after compare the same behaviour. Highlighting only the row nearest the centre would be clearer.
-- The dev server sends no cache headers. The server lives outside `perf-clinic/`, so I did not touch it.
-- Search matches JSON key names, so "ok" or "latency" match every event. It is a correctness quirk, and I kept it so results stay identical.
+- The scroll highlight marks 5-6 rows at once because the band is 30-60% of the viewport. I kept it so before and after compare the same behaviour; highlighting only the row nearest the centre would be clearer.
+- The dev server sends no cache headers. The server is outside `perf-clinic/`, so I did not change it.
+- Search matches JSON key names, so "ok" or "latency" match almost every event. It is a correctness quirk, kept so results stay identical.
+- The worker keeps the lowercase search text of all 100,000 events in memory to keep searches fast; a smaller index would change which queries match.
