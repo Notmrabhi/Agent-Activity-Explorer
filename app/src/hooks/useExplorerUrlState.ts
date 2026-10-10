@@ -74,10 +74,14 @@ export function useExplorerUrlState(): ExplorerUrlState & ExplorerUrlActions {
 
   const openEvent = useCallback(
     (id: string, options: { replace?: boolean } = {}) => {
-      if (id === state.eventId) return
       if (options.replace) {
+        // No "already open" check here: `state` can lag a render behind the URL during a fast
+        // J/K burst, so k right after j would look like a no-op and be dropped. Replacing the
+        // URL with itself is harmless anyway.
         write({ filters: state.filters, eventId: id }, { replace: true, historyState: location.state })
       } else {
+        // Re-opening the open event must not push a duplicate history entry.
+        if (id === state.eventId) return
         const marker: PanelHistoryState = { panelOpenedInApp: true }
         write({ filters: state.filters, eventId: id }, { historyState: marker })
       }

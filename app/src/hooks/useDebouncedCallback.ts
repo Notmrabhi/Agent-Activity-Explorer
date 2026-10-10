@@ -22,29 +22,30 @@ export function useDebouncedCallback<Args extends unknown[]>(
   })
 
   const debounced = useMemo(() => {
-    let timer: number | undefined
-    let pending: Args | null = null
+    // One mutable box, private to this closure (not render state). Mutating a property instead of
+    // reassigning captured `let`s keeps the React compiler lint from flagging it.
+    const box: { timer: number | undefined; pending: Args | null } = { timer: undefined, pending: null }
 
     const run = () => {
-      timer = undefined
-      if (pending) {
-        const args = pending
-        pending = null
+      box.timer = undefined
+      const args = box.pending
+      if (args) {
+        box.pending = null
         callbackRef.current(...args)
       }
     }
     const fn = ((...args: Args) => {
-      pending = args
-      window.clearTimeout(timer)
-      timer = window.setTimeout(run, delayMs)
+      box.pending = args
+      window.clearTimeout(box.timer)
+      box.timer = window.setTimeout(run, delayMs)
     }) as Debounced<Args>
     fn.cancel = () => {
-      window.clearTimeout(timer)
-      timer = undefined
-      pending = null
+      window.clearTimeout(box.timer)
+      box.timer = undefined
+      box.pending = null
     }
     fn.flush = () => {
-      window.clearTimeout(timer)
+      window.clearTimeout(box.timer)
       run()
     }
     return fn

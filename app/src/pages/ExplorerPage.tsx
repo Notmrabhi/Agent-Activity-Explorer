@@ -1,4 +1,312 @@
-// Placeholder until the components land.
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import type { EventFilters, EventSummary } from '../api/types'
+import { DetailPanel } from '../components/DetailPanel/DetailPanel'
+import { EventTable, type EventTableHandle } from '../components/EventTable/EventTable'
+import { EmptyState } from '../components/feedback/EmptyState'
+import { ErrorState } from '../components/feedback/ErrorState'
+import { SlowNotice } from '../components/feedback/SlowNotice'
+import { AppHeader } from '../components/Header/AppHeader'
+import { ShortcutsDialog } from '../components/ShortcutsDialog'
+import { Toolbar } from '../components/Toolbar/Toolbar'
+import { Button } from '../components/ui/Button'
+import { InboxIcon } from '../components/ui/icons'
+import { useEventDetail, useEventList } from '../hooks/useEvents'
+import { useExplorerUrlState } from '../hooks/useExplorerUrlState'
+import { DOCKED_PANEL_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
+import { useSlowFlag } from '../hooks/useSlowFlag'
+import { STATUS_LABELS } from '../lib/format'
+import { hasActiveFilters, serializeExplorerParams } from '../lib/urlState'
+
+const APP_TITLE = 'Agent Activity'
+
+/** Any dialog except the detail panel: those own their keys (shortcuts dialog, filter popovers). */
+const OTHER_DIALOG_SELECTOR = 'dialog[open]:not([data-detail-panel]), [role="dialog"]:not([data-detail-panel])'
+
+function isEditableTarget(target: Element): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  )
+}
+
+/** Names the filters that produced nothing, e.g. Nothing for “stripe” from <b>devops</b> with status <b>Error</b>. */
+function describeEmpty(filters: EventFilters): ReactNode {
+  const strong = 'font-medium text-fg'
+  const q = filters.q.trim()
+  return (
+    <>
+      Nothing
+      {q !== '' && <> for “{q}”</>}
+      {filters.agents.length > 0 && (
+        <>
+          {' '}from <b className={strong}>{filters.agents.join(', ')}</b>
+        </>
+      )}
+      {filters.status !== null && (
+        <>
+          {' '}with status <b className={strong}>{STATUS_LABELS[filters.status]}</b>
+        </>
+      )}
+      .
+    </>
+  )
+}
+
+/**
+ * The whole app: header, search/filter bar, the virtualised event list and the detail panel.
+ *
+ * All view state comes from the URL (useExplorerUrlState); all server state from TanStack Query
+ * (useEventList). This component only wires them together, picks which list state to show and
+ * owns the page-level keyboard shortcuts.
+ */
 export default function ExplorerPage() {
-  return <main className="p-6 bg-surface text-fg rounded-lg">Agent Activity Explorer</main>
+  const url = useExplorerUrlState()
+  const { filters, eventId, setQuery, setAgents, setStatus, clearFilters, openEvent, closeEvent } = url
+  const list = useEventList(filters)
+  const { rows, total } = list
+  const docked = useMediaQuery(DOCKED_PANEL_QUERY)
+  const listSlow = useSlowFlag(list.isFetching)
+
+  const tableRef = useRef<EventTableHandle>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+
+  // id -> position in the loaded rows: the panel's summary and its prev/next neighbours.
+  const indexById = useMemo(() => new Map(rows.map((row, index) => [row.id, index])), [rows])
+  const openIndex = eventId === null ? undefined : indexById.get(eventId)
+  const openSummary: EventSummary | undefined = openIndex === undefined ? undefined : rows[openIndex]
+  const prevRow = openIndex === undefined ? undefined : rows[openIndex - 1]
+  const nextRow = openIndex === undefined ? undefined : rows[openIndex + 1]
+
+  // --- Prev / next ----------------------------------------------------------------------------
+  // The router writes the URL at once but applies it in a transition, so `eventId` can lag a
+  // render behind a fast J/K burst (or key repeat). Stepping from the lagging id would re-request
+  // the same neighbour and stall, so steps are taken from the newest id we asked for. Ids are
+  // dropped once the URL catches up; any other change (Back, a click in the list) clears them.
+  const requestedIdsRef = useRef<string[]>([])
+  useLayoutEffect(() => {
+    const requested = requestedIdsRef.current
+    const position = eventId === null ? -1 : requested.indexOf(eventId)
+    requestedIdsRef.current = position === -1 ? [] : requested.slice(position + 1)
+  }, [eventId])
+
+  const step = useCallback(
+    (delta: 1 | -1) => {
+      const from = requestedIdsRef.current.at(-1) ?? eventId
+      const index = from === null ? undefined : indexById.get(from)
+      const target = index === undefined ? undefined : rows[index + delta]
+      if (!target) return
+      requestedIdsRef.current.push(target.id)
+      // replace: stepping through events should not leave one history entry per event.
+      openEvent(target.id, { replace: true })
+    },
+    [eventId, indexById, rows, openEvent],
+  )
+  const goPrev = useCallback(() => step(-1), [step])
+  const goNext = useCallback(() => step(1), [step])
+
+  // --- Focus return ---------------------------------------------------------------------------
+  // When the panel closes (Esc, close button, Back), put focus back on the row that was open, so
+  // keyboard users keep their place. Only when focus was lost with the panel (on <body>) or is
+  // still in the list: if the user closed it by moving somewhere else, leave focus there.
+  const prevEventIdRef = useRef(eventId)
+  useEffect(() => {
+    const closedId = prevEventIdRef.current
+    prevEventIdRef.current = eventId
+    if (closedId === null || eventId !== null) return
+    const focused = document.activeElement
+    if (focused !== null && focused !== document.body && focused.closest('[role="grid"]') === null) return
+    if (!tableRef.current?.focusRow(closedId)) tableRef.current?.focusTable()
+  }, [eventId])
+
+  // --- Document title -------------------------------------------------------------------------
+  // The detail query is shared with the panel (same key), so this adds no request. It names a
+  // cold-linked event that is not in the loaded rows yet.
+  const detail = useEventDetail(eventId)
+  const openHead = openSummary ?? detail.data
+  useEffect(() => {
+    document.title = openHead ? `${openHead.tool} · ${openHead.agent} — ${APP_TITLE}` : APP_TITLE
+  }, [openHead])
+
+  // --- Global shortcuts -----------------------------------------------------------------------
+  // "/" search, "?" shortcuts, J/K step through events while the panel is open. Keys typed into
+  // fields, already handled (the grid handles its own J/K and arrows and stops them), or pressed
+  // inside another dialog are left alone. Esc is the panel's and the dialogs' own business.
+  const onDocumentKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.defaultPrevented || event.isComposing) return
+    if (event.ctrlKey || event.metaKey || event.altKey) return
+    const target = event.target
+    if (target instanceof Element) {
+      if (isEditableTarget(target)) return
+      if (target.closest(OTHER_DIALOG_SELECTOR) !== null) return
+    }
+    const inPanel = target instanceof Element && target.closest('[data-detail-panel]') !== null
+
+    switch (event.key) {
+      case '/':
+        // The overlay panel is modal (the toolbar is inert behind it), so "/" can't reach search.
+        if (inPanel && !docked) return
+        event.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+        return
+      case '?':
+        event.preventDefault()
+        setShortcutsOpen(true)
+        return
+      case 'j':
+      case 'k': {
+        if (eventId === null) return
+        if (target instanceof Element && target.closest('[role="grid"]') !== null) return
+        event.preventDefault()
+        if (event.key === 'j') goNext()
+        else goPrev()
+        return
+      }
+      default:
+    }
+  })
+
+  useEffect(() => {
+    document.addEventListener('keydown', onDocumentKeyDown)
+    return () => document.removeEventListener('keydown', onDocumentKeyDown)
+  }, [])
+
+  // --- List actions ---------------------------------------------------------------------------
+  const { refetch, fetchNextPage } = list
+  const retryList = useCallback(() => {
+    void refetch()
+  }, [refetch])
+  // A slow next page is re-requested on its own; anything else (first page, new filters) restarts
+  // the list query. cancelRefetch aborts the slow request instead of waiting behind it.
+  const retrySlow = useCallback(() => {
+    if (list.isFetchingNextPage) void fetchNextPage({ cancelRefetch: true })
+    else void refetch({ cancelRefetch: true })
+  }, [list.isFetchingNextPage, fetchNextPage, refetch])
+  const loadMore = useCallback(() => {
+    void fetchNextPage()
+  }, [fetchNextPage])
+
+  const focusSearch = () => searchInputRef.current?.focus()
+  const clearAllFromEmpty = () => {
+    clearFilters()
+    // The empty state (and the button) unmounts; park focus in the search box, not on <body>.
+    focusSearch()
+  }
+
+  // Equal filters give equal strings (canonical order, no empty params). Excludes the event id,
+  // so opening an event does not scroll the list back to the top.
+  const resetKey = serializeExplorerParams({ filters, eventId: null }).toString()
+
+  const activeFilterCount =
+    (filters.q.trim() !== '' ? 1 : 0) + (filters.agents.length > 0 ? 1 : 0) + (filters.status !== null ? 1 : 0)
+
+  let listContent: ReactNode
+  if (list.isError && rows.length === 0) {
+    listContent = <ErrorState error={list.error} onRetry={retryList} retrying={list.isFetching} headingLevel={2} />
+  } else if (list.isSuccess && !list.isPlaceholderData && rows.length === 0) {
+    listContent = hasActiveFilters(filters) ? (
+      <EmptyState
+        headingLevel={2}
+        title="No events match your filters"
+        description={describeEmpty(filters)}
+        actions={
+          <>
+            <Button variant="primary" onClick={clearAllFromEmpty}>
+              Clear all filters
+            </Button>
+            {/* With several filters, offer to loosen just the most likely culprit. */}
+            {activeFilterCount > 1 && filters.status !== null && (
+              <Button onClick={() => setStatus(null)}>Remove status filter</Button>
+            )}
+            {activeFilterCount > 1 && filters.status === null && filters.q.trim() !== '' && (
+              <Button
+                onClick={() => {
+                  setQuery('', { replace: false })
+                  focusSearch()
+                }}
+              >
+                Clear search
+              </Button>
+            )}
+          </>
+        }
+      />
+    ) : (
+      <EmptyState
+        headingLevel={2}
+        icon={<InboxIcon size={40} strokeWidth={1.6} />}
+        title="No events yet"
+        description="Tool calls will appear here as your agents make them."
+      />
+    )
+  } else {
+    listContent = (
+      <EventTable
+        ref={tableRef}
+        rows={rows}
+        total={total}
+        selectedId={eventId}
+        isInitialLoading={list.isPending}
+        isStale={list.isPlaceholderData}
+        hasNextPage={list.hasNextPage}
+        isFetchingNextPage={list.isFetchingNextPage}
+        isFetchNextPageError={list.isFetchNextPageError}
+        nextPageError={list.error}
+        onLoadMore={loadMore}
+        onOpen={openEvent}
+        resetKey={resetKey}
+      />
+    )
+  }
+
+  const panel =
+    eventId === null ? null : (
+      <DetailPanel
+        eventId={eventId}
+        summary={openSummary}
+        docked={docked}
+        onClose={closeEvent}
+        onPrev={prevRow ? goPrev : undefined}
+        onNext={nextRow ? goNext : undefined}
+      />
+    )
+
+  return (
+    <div className="flex h-dvh flex-col bg-bg text-fg">
+      <AppHeader onOpenShortcuts={() => setShortcutsOpen(true)} />
+      <Toolbar
+        filters={filters}
+        onQueryChange={setQuery}
+        onAgentsChange={setAgents}
+        onStatusChange={setStatus}
+        onClearFilters={clearFilters}
+        total={total}
+        loadedCount={rows.length}
+        // Placeholder rows belong to the previous filters: the count dims until the new ones land.
+        isLoading={list.isPending || list.isPlaceholderData}
+        searchInputRef={searchInputRef}
+      />
+      <div className="flex min-h-0 flex-1">
+        <main className="flex min-w-0 flex-1 flex-col px-4 pt-4 md:px-6">
+          {listSlow && <SlowNotice onRetry={retrySlow} className="mb-3 shrink-0" />}
+          {listContent}
+        </main>
+        {docked && panel}
+      </div>
+      {!docked && panel}
+      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+    </div>
+  )
 }
