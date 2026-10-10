@@ -1,6 +1,6 @@
 import { keepPreviousData, skipToken, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { fetchAgents, fetchEvent, fetchEventsPage } from '../api/events'
+import { fetchAgents, fetchEvent, fetchEventsPage, fetchNewestEvent } from '../api/events'
 import { queryKeys } from '../api/queryKeys'
 import type { EventFilters, EventSummary } from '../api/types'
 
@@ -49,5 +49,19 @@ export function useAgents() {
     queryKey: queryKeys.agents(),
     queryFn: ({ signal }) => fetchAgents(signal),
     staleTime: Infinity,
+  })
+}
+
+/**
+ * Timestamp of the newest event (null when there are none): the anchor quick time ranges count
+ * back from. Re-read after a minute, since new events keep arriving and "last 15 minutes" should
+ * include them.
+ */
+export function useNewestEventTime() {
+  return useQuery({
+    queryKey: queryKeys.newestEvent(),
+    queryFn: ({ signal }) => fetchNewestEvent(signal),
+    select: (event) => event?.timestamp ?? null,
+    staleTime: 60_000,
   })
 }

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router'
-import { EMPTY_FILTERS, type EventFilters, type EventStatus } from '../api/types'
+import { EMPTY_FILTERS, type EventFilters, type EventStatus, type TimeRange } from '../api/types'
 import { parseExplorerParams, serializeExplorerParams, type ExplorerUrlState } from '../lib/urlState'
 
 /** Stored on the history entry created when the user opens the panel from the list. */
@@ -17,6 +17,8 @@ export interface ExplorerUrlActions {
   setQuery: (q: string, options?: { replace?: boolean }) => void
   setAgents: (agents: string[]) => void
   setStatus: (status: EventStatus | null) => void
+  /** Absolute ISO UTC bounds (see lib/urlState for why never relative). Either may be null. */
+  setTimeRange: (range: TimeRange) => void
   clearFilters: () => void
   /** `replace: true` when moving between events with the keyboard while the panel is open. */
   openEvent: (id: string, options?: { replace?: boolean }) => void
@@ -32,6 +34,8 @@ export interface ExplorerUrlActions {
  * - Opening the panel from the list pushes an entry marked `panelOpenedInApp`; closing it then
  *   goes Back, so Back/close behave the same and there is no dead history entry. A panel that
  *   came from a pasted link has no marker, so closing it replaces instead of leaving the app.
+ * - Switching to another event while the panel is open replaces that entry (keeping its marker),
+ *   so one Esc or one Back always returns to the list, however many events were viewed.
  */
 export function useExplorerUrlState(): ExplorerUrlState & ExplorerUrlActions {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -70,11 +74,23 @@ export function useExplorerUrlState(): ExplorerUrlState & ExplorerUrlActions {
     (status: EventStatus | null) => setFilters({ ...state.filters, status }),
     [setFilters, state.filters],
   )
+  const setTimeRange = useCallback(
+    (range: TimeRange) => {
+      // Re-applying the range already in the URL (same preset twice) must not push a duplicate
+      // history entry that Back would then appear to do nothing for.
+      if (range.from === state.filters.from && range.to === state.filters.to) return
+      setFilters({ ...state.filters, from: range.from, to: range.to })
+    },
+    [setFilters, state.filters],
+  )
   const clearFilters = useCallback(() => setFilters(EMPTY_FILTERS), [setFilters])
 
   const openEvent = useCallback(
     (id: string, options: { replace?: boolean } = {}) => {
-      if (options.replace) {
+      // Switching events while the panel is already open (clicking another row, J/K, prev/next)
+      // replaces the entry instead of stacking one per event. Otherwise Esc/Back would step back
+      // through every event viewed (B → A) instead of closing the panel.
+      if (options.replace || (state.eventId !== null && id !== state.eventId)) {
         // No "already open" check here: `state` can lag a render behind the URL during a fast
         // J/K burst, so k right after j would look like a no-op and be dropped. Replacing the
         // URL with itself is harmless anyway.
@@ -98,5 +114,5 @@ export function useExplorerUrlState(): ExplorerUrlState & ExplorerUrlActions {
     }
   }, [navigate, write, state.filters, state.eventId, location.state])
 
-  return { ...state, setQuery, setAgents, setStatus, clearFilters, openEvent, closeEvent }
+  return { ...state, setQuery, setAgents, setStatus, setTimeRange, clearFilters, openEvent, closeEvent }
 }

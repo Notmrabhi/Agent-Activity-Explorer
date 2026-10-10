@@ -46,6 +46,13 @@ export interface EventFilters {
   agents: string[]
   /** null = all statuses. */
   status: EventStatus | null
+  /** Inclusive start, ISO 8601 UTC (e.g. "2026-10-09T11:00:00.000Z"). null = no lower bound. */
+  from: string | null
+  /** Exclusive end, ISO 8601 UTC. null = no upper bound. Always after `from` when both are set. */
+  to: string | null
 }
 
-export const EMPTY_FILTERS: EventFilters = { q: '', agents: [], status: null }
+/** The time-range part of the filters. Either end may be open. */
+export type TimeRange = Pick<EventFilters, 'from' | 'to'>
+
+export const EMPTY_FILTERS: EventFilters = { q: '', agents: [], status: null, from: null, to: null }

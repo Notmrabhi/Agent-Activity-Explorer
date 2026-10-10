@@ -1,7 +1,7 @@
 // Endpoint functions. Each takes an AbortSignal so cancelled queries cancel their request.
 import { apiGet } from './client'
 import { isEventDetail, isEventsPage, isStringArray } from './guards'
-import type { EventDetail, EventFilters, EventsPage } from './types'
+import type { EventDetail, EventFilters, EventsPage, EventSummary } from './types'
 
 /** Rows per request. The API caps `limit` at 200; 100 balances round trips against payload size. */
 export const PAGE_SIZE = 100
@@ -13,6 +13,9 @@ export function filtersToApiParams(filters: EventFilters): URLSearchParams {
   if (q) params.set('q', q)
   for (const agent of filters.agents) params.append('agent', agent)
   if (filters.status) params.set('status', filters.status)
+  // Same names and semantics as the API: inclusive `from`, exclusive `to`.
+  if (filters.from) params.set('from', filters.from)
+  if (filters.to) params.set('to', filters.to)
   return params
 }
 
@@ -25,6 +28,17 @@ export function fetchEventsPage(
   params.set('limit', String(PAGE_SIZE))
   if (cursor) params.set('cursor', cursor)
   return apiGet('/events', isEventsPage, { params, signal })
+}
+
+/**
+ * The newest event overall (unfiltered), or null when there are none. The list is newest first,
+ * so this is one row of the first page. Quick time ranges count back from it: the data is
+ * historical, so "the last hour" by the wall clock would usually be empty.
+ */
+export async function fetchNewestEvent(signal?: AbortSignal): Promise<EventSummary | null> {
+  const params = new URLSearchParams({ limit: '1' })
+  const page = await apiGet('/events', isEventsPage, { params, signal })
+  return page.items[0] ?? null
 }
 
 export function fetchEvent(id: string, signal?: AbortSignal): Promise<EventDetail> {
