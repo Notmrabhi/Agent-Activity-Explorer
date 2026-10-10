@@ -21,8 +21,10 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
+// Timestamps are already ISO strings in UTC, so "HH:MM:SS" is a slice. Same output as
+// toLocaleTimeString('en-GB', UTC), without creating a Date and a formatter per row.
 function formatTime(iso) {
-  return new Date(iso).toLocaleTimeString('en-GB', { hour12: false, timeZone: 'UTC' });
+  return iso.slice(11, 19);
 }
 
 function countByAgent(events) {
@@ -79,11 +81,32 @@ function rememberViewed(items) {
   }
 }
 
+// Events sorted newest first once at startup, plus a lazily built lowercase JSON string
+// per event. Search used to stringify all 100k events and re-sort the matches (with two
+// Date objects per comparison) on every keystroke.
+let sortedEvents = [];
+const searchTexts = [];
+
+function buildSearchIndex() {
+  // Sort is stable, so filtering this list gives the same order the old
+  // filter-then-sort produced, ties included.
+  sortedEvents = window.ACTIVITY
+    .map((event) => ({ event, time: Date.parse(event.timestamp) }))
+    .sort((a, b) => b.time - a.time)
+    .map((entry) => entry.event);
+}
+
 function search(query) {
   const needle = query.trim().toLowerCase();
-  return window.ACTIVITY
-    .filter((event) => JSON.stringify(event).toLowerCase().includes(needle))
-    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  if (!needle) return sortedEvents;
+  const matches = [];
+  for (let i = 0; i < sortedEvents.length; i++) {
+    // Match against the same text as before (key names included), so results don't change.
+    let text = searchTexts[i];
+    if (text === undefined) text = searchTexts[i] = JSON.stringify(sortedEvents[i]).toLowerCase();
+    if (text.includes(needle)) matches.push(sortedEvents[i]);
+  }
+  return matches;
 }
 
 function renderResults(query) {
@@ -109,14 +132,39 @@ function renderResults(query) {
   rememberViewed(page);
 }
 
+// Same sizes as the old loop (start at 14px, shrink 0.5px until the text fits,
+// never below 11px), but each pass writes every cell first and then reads every
+// cell, so a pass costs one layout instead of one forced layout per cell per step.
+// Grid columns are fixed, so one cell's font size never changes another's width.
 function fitSummaries() {
-  resultsList.querySelectorAll('.result-summary').forEach((cell) => {
-    let size = 14;
-    cell.style.fontSize = size + 'px';
-    while (cell.scrollWidth > cell.clientWidth && size > 11) {
-      size -= 0.5;
-      cell.style.fontSize = size + 'px';
-    }
+  const cells = [...resultsList.querySelectorAll('.result-summary')];
+  cells.forEach((cell) => { cell.style.fontSize = '14px'; });
+  const sizes = cells.map((cell) => {
+    const overflow = cell.scrollWidth > cell.clientWidth;
+    if (!overflow) return 14;
+    // Text width scales with font size: start one step above the estimate and
+    // let the passes below walk down to the exact size.
+    const estimate = Math.ceil((14 * cell.clientWidth / cell.scrollWidth) * 2) / 2 + 0.5;
+    return Math.min(13.5, Math.max(11, estimate));
+  });
+  let pending = cells.map((_, i) => i).filter((i) => sizes[i] < 14);
+  while (pending.length) {
+    pending.forEach((i) => { cells[i].style.fontSize = sizes[i] + 'px'; });
+    pending = pending.filter((i) => {
+      if (sizes[i] <= 11 || cells[i].scrollWidth <= cells[i].clientWidth) return false;
+      sizes[i] -= 0.5;
+      return true;
+    });
+  }
+}
+
+// Resize fires many times per frame; refit at most once per frame.
+let fitFrame = 0;
+function scheduleFitSummaries() {
+  if (fitFrame) return;
+  fitFrame = requestAnimationFrame(() => {
+    fitFrame = 0;
+    fitSummaries();
   });
 }
 
@@ -216,14 +264,17 @@ function closeTicker() {
 }
 
 let ready = false;
-let pendingQuery = '';
+// Wait for a short pause in typing instead of searching on every keystroke.
+let searchTimer = 0;
 searchInput.addEventListener('input', () => {
-  if (ready) renderResults(searchInput.value);
-  else pendingQuery = searchInput.value;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    if (ready) renderResults(searchInput.value);
+  }, 150);
 });
 window.addEventListener('scroll', onScroll);
 window.addEventListener('resize', equalizeCardHeights);
-window.addEventListener('resize', fitSummaries);
+window.addEventListener('resize', scheduleFitSummaries);
 resultsList.addEventListener('mousemove', showPreview);
 resultsList.addEventListener('mouseleave', hidePreview);
 resultsList.addEventListener('wheel', hidePreview);
@@ -235,9 +286,11 @@ tickerToggle.addEventListener('click', () => (tickerPanel ? closeTicker() : open
 // render are slow, and they used to run before anything showed on screen.
 function start() {
   window.ACTIVITY = window.buildActivity(100000);
+  buildSearchIndex();
   renderAgents();
   equalizeCardHeights();
-  renderResults(pendingQuery);
+  // Whatever was typed before the data was ready.
+  renderResults(searchInput.value);
   ready = true;
 }
 requestAnimationFrame(() => setTimeout(start, 0));
