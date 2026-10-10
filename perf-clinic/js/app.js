@@ -97,9 +97,10 @@ function searchText(i) {
 
 const whenIdle = window.requestIdleCallback || ((cb) => setTimeout(() => cb({ timeRemaining: () => 10 }), 1));
 let indexed = 0;
-// Builds the search texts in idle time so the first search doesn't pay for all of them.
+// Builds the search texts in short idle slices so the first search doesn't pay for all of them.
 function indexWhenIdle(deadline) {
-  while (indexed < sortedEvents.length && deadline.timeRemaining() > 1) searchText(indexed++);
+  const end = performance.now() + 5;
+  while (indexed < sortedEvents.length && deadline.timeRemaining() > 0 && performance.now() < end) searchText(indexed++);
   if (indexed < sortedEvents.length) whenIdle(indexWhenIdle);
 }
 
