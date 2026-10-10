@@ -177,6 +177,8 @@ let lastPadding = '';
 let lastContext = '';
 let scrollFrame = 0;
 function onScroll() {
+  // Rows move under a still cursor on any scroll (keys, scrollbar), so the tooltip would go stale.
+  preview.hidden = true;
   if (!scrollFrame) scrollFrame = requestAnimationFrame(updateOnScroll);
 }
 
