@@ -89,14 +89,26 @@ function buildSearchIndex() {
     .map((entry) => entry.event);
 }
 
+function searchText(i) {
+  let text = searchTexts[i];
+  if (text === undefined) text = searchTexts[i] = JSON.stringify(sortedEvents[i]).toLowerCase();
+  return text;
+}
+
+const whenIdle = window.requestIdleCallback || ((cb) => setTimeout(() => cb({ timeRemaining: () => 10 }), 1));
+let indexed = 0;
+// Builds the search texts in idle time so the first search doesn't pay for all of them.
+function indexWhenIdle(deadline) {
+  while (indexed < sortedEvents.length && deadline.timeRemaining() > 1) searchText(indexed++);
+  if (indexed < sortedEvents.length) whenIdle(indexWhenIdle);
+}
+
 function search(query) {
   const needle = query.trim().toLowerCase();
   if (!needle) return sortedEvents;
   const matches = [];
   for (let i = 0; i < sortedEvents.length; i++) {
-    let text = searchTexts[i];
-    if (text === undefined) text = searchTexts[i] = JSON.stringify(sortedEvents[i]).toLowerCase();
-    if (text.includes(needle)) matches.push(sortedEvents[i]);
+    if (searchText(i).includes(needle)) matches.push(sortedEvents[i]);
   }
   return matches;
 }
@@ -320,6 +332,7 @@ function start() {
   renderAgentCounts();
   renderResults(searchInput.value);
   ready = true;
+  whenIdle(indexWhenIdle);
 }
 // Build data and render the list after the first paint.
 requestAnimationFrame(() => setTimeout(start, 0));
