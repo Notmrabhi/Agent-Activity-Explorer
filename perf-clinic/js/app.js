@@ -129,6 +129,7 @@ function renderResults(query) {
     );
   }).join('');
   fitSummaries();
+  measureRows();
   rememberViewed(page);
 }
 
@@ -165,30 +166,77 @@ function scheduleFitSummaries() {
   fitFrame = requestAnimationFrame(() => {
     fitFrame = 0;
     fitSummaries();
+    measureRows();
   });
 }
 
+// Calls per "HH:MM", counted once. The scroll handler used to filter all 100k events
+// (with a new Date each) on every scroll event.
+const callsPerMinute = new Map();
+function countCallsPerMinute() {
+  for (const event of window.ACTIVITY) {
+    const minute = event.timestamp.slice(11, 16);
+    callsPerMinute.set(minute, (callsPerMinute.get(minute) || 0) + 1);
+  }
+}
+
+// Row positions inside the list, measured once per render/resize. Rows used to be measured
+// one by one with getBoundingClientRect on every scroll event.
+let rows = [];
+let rowOffsets = [];
+let focusedRows = new Set();
+function measureRows() {
+  rows = [...resultsList.children];
+  const listTop = resultsList.getBoundingClientRect().top;
+  rowOffsets = rows.map((row) => row.getBoundingClientRect().top - listTop);
+  focusedRows = new Set();
+}
+
+let lastPadding = '';
+let lastContext = '';
+let scrollFrame = 0;
 function onScroll() {
+  // Scroll events can fire several times per frame; do the work once per frame.
+  if (!scrollFrame) scrollFrame = requestAnimationFrame(updateOnScroll);
+}
+
+function updateOnScroll() {
+  scrollFrame = 0;
+  // Reads first...
   const scrolled = window.scrollY;
-  const max = document.documentElement.scrollHeight - window.innerHeight;
-  progress.style.width = (max > 0 ? (scrolled / max) * 100 : 0) + '%';
+  const viewport = window.innerHeight;
+  const max = document.documentElement.scrollHeight - viewport;
+  const listTop = resultsList.getBoundingClientRect().top;
+
+  // ...then writes, so the browser lays out at most once.
+  // transform instead of width: the bar animates without triggering layout.
+  progress.style.transform = 'scaleX(' + (max > 0 ? scrolled / max : 0) + ')';
   topbar.classList.toggle('topbar-raised', scrolled > 8);
-  topbar.style.paddingBlock = Math.max(6, 12 - scrolled / 20) + 'px';
-  backToTop.classList.toggle('visible', scrolled > window.innerHeight);
-  resultsList.querySelectorAll('.result-row').forEach((row) => {
-    row.classList.remove('in-focus');
-    const rect = row.getBoundingClientRect();
-    if (rect.top > window.innerHeight * 0.3 && rect.top < window.innerHeight * 0.6) {
-      row.classList.add('in-focus');
-    }
+  // The shrink only changes over the first 120px; skip the (layout-causing) write otherwise.
+  const padding = Math.max(6, 12 - scrolled / 20) + 'px';
+  if (padding !== lastPadding) {
+    topbar.style.paddingBlock = padding;
+    lastPadding = padding;
+  }
+  backToTop.classList.toggle('visible', scrolled > viewport);
+
+  // Same rule as before: rows whose top is between 30% and 60% of the viewport.
+  const next = new Set();
+  rowOffsets.forEach((offset, i) => {
+    const top = listTop + offset;
+    if (top > viewport * 0.3 && top < viewport * 0.6) next.add(i);
   });
-  const focused = resultsList.querySelector('.in-focus');
-  if (focused) {
-    const minute = focused.dataset.minute;
-    const sameMinute = window.ACTIVITY.filter((event) => new Date(event.timestamp).toISOString().slice(11, 16) === minute).length;
-    scrollContext.textContent = minute + ' UTC · ' + sameMinute + ' calls that minute';
-  } else {
-    scrollContext.textContent = '';
+  focusedRows.forEach((i) => { if (!next.has(i)) rows[i].classList.remove('in-focus'); });
+  next.forEach((i) => { if (!focusedRows.has(i)) rows[i].classList.add('in-focus'); });
+  focusedRows = next;
+
+  const first = next.size ? rows[Math.min(...next)] : null;
+  const context = first
+    ? first.dataset.minute + ' UTC · ' + (callsPerMinute.get(first.dataset.minute) || 0) + ' calls that minute'
+    : '';
+  if (context !== lastContext) {
+    scrollContext.textContent = context;
+    lastContext = context;
   }
 }
 
@@ -196,14 +244,21 @@ function hidePreview() {
   preview.hidden = true;
 }
 
+// id -> event, built once. The preview used to scan all 100k events on every mousemove.
+const eventsById = new Map();
+let previewId = null;
+
 function showPreview(event) {
   const row = event.target.closest('.result-row');
   if (!row) return;
-  const item = window.ACTIVITY.find((candidate) => candidate.id === row.dataset.id);
-  if (!item) return;
-  preview.textContent = item.summary;
-  preview.style.top = event.clientY + 12 + 'px';
-  preview.style.left = event.clientX + 12 + 'px';
+  if (row.dataset.id !== previewId) {
+    const item = eventsById.get(row.dataset.id);
+    if (!item) return;
+    preview.textContent = item.summary;
+    previewId = row.dataset.id;
+  }
+  // transform moves the tooltip without a layout; top/left would trigger one per mousemove.
+  preview.style.transform = 'translate(' + (event.clientX + 12) + 'px, ' + (event.clientY + 12) + 'px)';
   preview.hidden = false;
 }
 
@@ -272,13 +327,15 @@ searchInput.addEventListener('input', () => {
     if (ready) renderResults(searchInput.value);
   }, 150);
 });
-window.addEventListener('scroll', onScroll);
+window.addEventListener('scroll', onScroll, { passive: true });
 window.addEventListener('resize', equalizeCardHeights);
 window.addEventListener('resize', scheduleFitSummaries);
 resultsList.addEventListener('mousemove', showPreview);
 resultsList.addEventListener('mouseleave', hidePreview);
-resultsList.addEventListener('wheel', hidePreview);
-resultsList.addEventListener('touchstart', hidePreview);
+// Passive: these only hide the tooltip, so the browser must not wait for them before
+// scrolling (non-passive wheel/touch listeners delayed every wheel scroll).
+resultsList.addEventListener('wheel', hidePreview, { passive: true });
+resultsList.addEventListener('touchstart', hidePreview, { passive: true });
 backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 tickerToggle.addEventListener('click', () => (tickerPanel ? closeTicker() : openTicker()));
 
@@ -287,6 +344,8 @@ tickerToggle.addEventListener('click', () => (tickerPanel ? closeTicker() : open
 function start() {
   window.ACTIVITY = window.buildActivity(100000);
   buildSearchIndex();
+  countCallsPerMinute();
+  window.ACTIVITY.forEach((event) => eventsById.set(event.id, event));
   renderAgents();
   equalizeCardHeights();
   // Whatever was typed before the data was ready.
