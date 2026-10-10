@@ -95,14 +95,14 @@ function searchText(i) {
   return text;
 }
 
-const whenIdle = window.requestIdleCallback || ((cb) => setTimeout(() => cb({ timeRemaining: () => 10 }), 1));
+// Builds the search texts in 5 ms tasks so the first search doesn't pay for all of them.
+const indexChannel = new MessageChannel();
 let indexed = 0;
-// Builds the search texts in short idle slices so the first search doesn't pay for all of them.
-function indexWhenIdle(deadline) {
+indexChannel.port1.onmessage = () => {
   const end = performance.now() + 5;
-  while (indexed < sortedEvents.length && deadline.timeRemaining() > 0 && performance.now() < end) searchText(indexed++);
-  if (indexed < sortedEvents.length) whenIdle(indexWhenIdle);
-}
+  while (indexed < sortedEvents.length && performance.now() < end) searchText(indexed++);
+  if (indexed < sortedEvents.length) indexChannel.port2.postMessage(0);
+};
 
 function search(query) {
   const needle = query.trim().toLowerCase();
@@ -333,7 +333,7 @@ function start() {
   renderAgentCounts();
   renderResults(searchInput.value);
   ready = true;
-  whenIdle(indexWhenIdle);
+  indexChannel.port2.postMessage(0);
 }
 // Build data and render the list after the first paint.
 requestAnimationFrame(() => setTimeout(start, 0));
