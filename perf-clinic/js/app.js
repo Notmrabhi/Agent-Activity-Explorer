@@ -39,7 +39,7 @@ function renderAgents() {
     const image = 'assets/agents/agent-' + String((index % 6) + 1).padStart(2, '0') + '.webp';
     return (
       '<article class="agent-card">' +
-      '<img class="agent-avatar" src="' + image + '" width="48" height="48" loading="lazy" decoding="async" alt="">' +
+      '<img class="agent-avatar" src="' + image + '" width="48" height="48" decoding="async" alt="">' +
       '<h3>' + escapeHtml(agent.name) + '</h3>' +
       '<p class="agent-owner">' + escapeHtml(agent.owner) + '</p>' +
       '<p class="agent-description">' + escapeHtml(agent.description) + '</p>' +
