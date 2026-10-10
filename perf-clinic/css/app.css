@@ -30,7 +30,6 @@ body {
   line-height: 1.5;
 }
 
-/* Full width, scaled by JS with transform so updates skip layout. */
 .read-progress {
   position: fixed;
   top: 0;
@@ -75,6 +74,10 @@ body {
   background: var(--surface);
   color: var(--text);
   font: inherit;
+}
+
+.search::-webkit-search-cancel-button {
+  cursor: pointer;
 }
 
 .button {
@@ -127,7 +130,7 @@ main {
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
-  /* Lets the animation use cqw (% of this box), matching the old left: 100% → -120%. */
+  /* cqw = % of this box, same distances as the old left: 100% → -120%. */
   container-type: inline-size;
 }
 
@@ -138,7 +141,6 @@ main {
   display: flex;
   gap: 48px;
   white-space: nowrap;
-  /* transform runs on the compositor; animating left re-ran layout every frame. */
   transform: translateX(100cqw);
   will-change: transform;
   animation: alerts-scroll 18s linear infinite;
@@ -184,10 +186,11 @@ main {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .agent-card {
+  min-height: 220px;
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -291,7 +294,6 @@ main {
   font-size: 12px;
 }
 
-/* Anchored at 0,0 and moved with transform by JS (no layout per mousemove). */
 .row-preview {
   position: fixed;
   top: 0;

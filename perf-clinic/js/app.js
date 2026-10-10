@@ -11,8 +11,6 @@ const tickerToggle = document.getElementById('ticker-toggle');
 const preview = document.getElementById('row-preview');
 const scrollContext = document.getElementById('scroll-context');
 
-const minCardHeight = 220;
-
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -21,8 +19,7 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
-// Timestamps are already ISO strings in UTC, so "HH:MM:SS" is a slice. Same output as
-// toLocaleTimeString('en-GB', UTC), without creating a Date and a formatter per row.
+// Timestamps are UTC ISO strings, so HH:MM:SS is a slice (same output as toLocaleTimeString).
 function formatTime(iso) {
   return iso.slice(11, 19);
 }
@@ -49,47 +46,39 @@ function renderAgents() {
       '</article>'
     );
   }).join('');
-  grid.querySelectorAll('img').forEach((img) => img.addEventListener('load', equalizeCardHeights));
 }
 
-function equalizeCardHeights() {
-  const cards = grid.querySelectorAll('.agent-card');
-  cards.forEach((card) => {
-    card.style.height = '';
-    const rowTop = card.offsetTop;
-    let tallest = Math.max(card.offsetHeight, minCardHeight);
-    cards.forEach((other) => {
-      if (other.offsetTop === rowTop) {
-        tallest = Math.max(tallest, other.offsetHeight);
-      }
-    });
-    card.style.height = tallest + 'px';
-  });
-}
+const MAX_VIEWED = 5000;
+const viewedIds = new Set(loadViewed());
 
 function loadViewed() {
-  return JSON.parse(localStorage.getItem(storageKey) || '[]');
-}
-
-function rememberViewed(items) {
-  const viewed = loadViewed();
-  for (const item of items) {
-    if (!viewed.includes(item.id)) {
-      viewed.push(item.id);
-    }
-    localStorage.setItem(storageKey, JSON.stringify(viewed));
+  try {
+    return JSON.parse(localStorage.getItem(storageKey) || '[]');
+  } catch {
+    return [];
   }
 }
 
-// Events sorted newest first once at startup, plus a lazily built lowercase JSON string
-// per event. Search used to stringify all 100k events and re-sort the matches (with two
-// Date objects per comparison) on every keystroke.
+// One localStorage write per render, capped so the stored list doesn't grow forever.
+function rememberViewed(items) {
+  let changed = false;
+  for (const item of items) {
+    if (!viewedIds.has(item.id)) {
+      viewedIds.add(item.id);
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  const extra = viewedIds.size - MAX_VIEWED;
+  if (extra > 0) [...viewedIds].slice(0, extra).forEach((id) => viewedIds.delete(id));
+  localStorage.setItem(storageKey, JSON.stringify([...viewedIds]));
+}
+
 let sortedEvents = [];
 const searchTexts = [];
 
+// Sorted once. The sort is stable, so filtering keeps the old filter-then-sort order.
 function buildSearchIndex() {
-  // Sort is stable, so filtering this list gives the same order the old
-  // filter-then-sort produced, ties included.
   sortedEvents = window.ACTIVITY
     .map((event) => ({ event, time: Date.parse(event.timestamp) }))
     .sort((a, b) => b.time - a.time)
@@ -101,7 +90,7 @@ function search(query) {
   if (!needle) return sortedEvents;
   const matches = [];
   for (let i = 0; i < sortedEvents.length; i++) {
-    // Match against the same text as before (key names included), so results don't change.
+    // Same text as before (key names included) so results don't change; built once per event.
     let text = searchTexts[i];
     if (text === undefined) text = searchTexts[i] = JSON.stringify(sortedEvents[i]).toLowerCase();
     if (text.includes(needle)) matches.push(sortedEvents[i]);
@@ -112,10 +101,9 @@ function search(query) {
 function renderResults(query) {
   const matches = search(query);
   const page = matches.slice(0, pageSize);
-  const viewed = loadViewed();
   resultsCount.textContent = matches.length.toLocaleString() + ' matching tool calls';
   resultsList.innerHTML = page.map((event) => {
-    const isNew = !viewed.includes(event.id);
+    const isNew = !viewedIds.has(event.id);
     return (
       '<li class="result-row status-' + event.status + '" data-id="' + event.id + '" data-minute="' + event.timestamp.slice(11, 16) + '">' +
       '<span class="result-time">' + formatTime(event.timestamp) + '</span>' +
@@ -133,18 +121,14 @@ function renderResults(query) {
   rememberViewed(page);
 }
 
-// Same sizes as the old loop (start at 14px, shrink 0.5px until the text fits,
-// never below 11px), but each pass writes every cell first and then reads every
-// cell, so a pass costs one layout instead of one forced layout per cell per step.
-// Grid columns are fixed, so one cell's font size never changes another's width.
+// Same sizes as the old loop (14px down to 11px in 0.5px steps), but each pass writes all
+// cells then reads all cells: one layout per pass instead of one per cell per step.
 function fitSummaries() {
   const cells = [...resultsList.querySelectorAll('.result-summary')];
   cells.forEach((cell) => { cell.style.fontSize = '14px'; });
   const sizes = cells.map((cell) => {
-    const overflow = cell.scrollWidth > cell.clientWidth;
-    if (!overflow) return 14;
-    // Text width scales with font size: start one step above the estimate and
-    // let the passes below walk down to the exact size.
+    if (cell.scrollWidth <= cell.clientWidth) return 14;
+    // Start one step above the proportional estimate; the passes walk down to the exact size.
     const estimate = Math.ceil((14 * cell.clientWidth / cell.scrollWidth) * 2) / 2 + 0.5;
     return Math.min(13.5, Math.max(11, estimate));
   });
@@ -159,7 +143,6 @@ function fitSummaries() {
   }
 }
 
-// Resize fires many times per frame; refit at most once per frame.
 let fitFrame = 0;
 function scheduleFitSummaries() {
   if (fitFrame) return;
@@ -170,8 +153,6 @@ function scheduleFitSummaries() {
   });
 }
 
-// Calls per "HH:MM", counted once. The scroll handler used to filter all 100k events
-// (with a new Date each) on every scroll event.
 const callsPerMinute = new Map();
 function countCallsPerMinute() {
   for (const event of window.ACTIVITY) {
@@ -180,8 +161,7 @@ function countCallsPerMinute() {
   }
 }
 
-// Row positions inside the list, measured once per render/resize. Rows used to be measured
-// one by one with getBoundingClientRect on every scroll event.
+// Row positions are measured once per render/resize instead of per row on every scroll.
 let rows = [];
 let rowOffsets = [];
 let focusedRows = new Set();
@@ -196,23 +176,19 @@ let lastPadding = '';
 let lastContext = '';
 let scrollFrame = 0;
 function onScroll() {
-  // Scroll events can fire several times per frame; do the work once per frame.
   if (!scrollFrame) scrollFrame = requestAnimationFrame(updateOnScroll);
 }
 
+// All reads before writes, so a frame costs at most one layout.
 function updateOnScroll() {
   scrollFrame = 0;
-  // Reads first...
   const scrolled = window.scrollY;
   const viewport = window.innerHeight;
   const max = document.documentElement.scrollHeight - viewport;
   const listTop = resultsList.getBoundingClientRect().top;
 
-  // ...then writes, so the browser lays out at most once.
-  // transform instead of width: the bar animates without triggering layout.
   progress.style.transform = 'scaleX(' + (max > 0 ? scrolled / max : 0) + ')';
   topbar.classList.toggle('topbar-raised', scrolled > 8);
-  // The shrink only changes over the first 120px; skip the (layout-causing) write otherwise.
   const padding = Math.max(6, 12 - scrolled / 20) + 'px';
   if (padding !== lastPadding) {
     topbar.style.paddingBlock = padding;
@@ -220,7 +196,6 @@ function updateOnScroll() {
   }
   backToTop.classList.toggle('visible', scrolled > viewport);
 
-  // Same rule as before: rows whose top is between 30% and 60% of the viewport.
   const next = new Set();
   rowOffsets.forEach((offset, i) => {
     const top = listTop + offset;
@@ -244,7 +219,6 @@ function hidePreview() {
   preview.hidden = true;
 }
 
-// id -> event, built once. The preview used to scan all 100k events on every mousemove.
 const eventsById = new Map();
 let previewId = null;
 
@@ -257,26 +231,22 @@ function showPreview(event) {
     preview.textContent = item.summary;
     previewId = row.dataset.id;
   }
-  // transform moves the tooltip without a layout; top/left would trigger one per mousemove.
   preview.style.transform = 'translate(' + (event.clientX + 12) + 'px, ' + (event.clientY + 12) + 'px)';
   preview.hidden = false;
 }
 
-const renderedTickerRows = new Map();
 let tickerPanel = null;
+let tickerTimer = 0;
+let tickerListeners = null;
 
 function tickerRow(event) {
-  if (renderedTickerRows.has(event.id)) {
-    return renderedTickerRows.get(event.id).cloneNode(true);
-  }
   const row = document.createElement('li');
   row.className = 'ticker-row status-' + event.status;
   row.innerHTML =
     '<span class="ticker-time">' + formatTime(event.timestamp) + '</span>' +
     '<span class="ticker-agent">' + escapeHtml(event.agent) + '</span>' +
     '<span class="ticker-tool">' + escapeHtml(event.tool) + '</span>';
-  renderedTickerRows.set(event.id, row);
-  return row.cloneNode(true);
+  return row;
 }
 
 function positionTicker() {
@@ -292,8 +262,8 @@ function openTicker() {
   tickerPanel = panel;
   const list = panel.querySelector('.ticker-list');
 
-  setInterval(() => {
-    if (!ready) return; // data is built just after the first paint
+  tickerTimer = setInterval(() => {
+    if (!ready) return;
     const event = window.ACTIVITY[Math.floor(Math.random() * window.ACTIVITY.length)];
     list.prepend(tickerRow(event));
     while (list.children.length > tickerVisibleRows) {
@@ -301,10 +271,13 @@ function openTicker() {
     }
   }, tickerIntervalMs);
 
-  window.addEventListener('resize', positionTicker);
+  // Removed together on close, so reopening doesn't stack listeners.
+  tickerListeners = new AbortController();
+  const { signal } = tickerListeners;
+  window.addEventListener('resize', positionTicker, { signal });
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') closeTicker();
-  });
+  }, { signal });
   positionTicker();
   tickerToggle.setAttribute('aria-pressed', 'true');
   tickerToggle.textContent = 'Hide live calls';
@@ -312,6 +285,8 @@ function openTicker() {
 
 function closeTicker() {
   if (!tickerPanel) return;
+  clearInterval(tickerTimer);
+  tickerListeners.abort();
   tickerPanel.remove();
   tickerPanel = null;
   tickerToggle.setAttribute('aria-pressed', 'false');
@@ -319,7 +294,6 @@ function closeTicker() {
 }
 
 let ready = false;
-// Wait for a short pause in typing instead of searching on every keystroke.
 let searchTimer = 0;
 searchInput.addEventListener('input', () => {
   clearTimeout(searchTimer);
@@ -328,27 +302,22 @@ searchInput.addEventListener('input', () => {
   }, 150);
 });
 window.addEventListener('scroll', onScroll, { passive: true });
-window.addEventListener('resize', equalizeCardHeights);
 window.addEventListener('resize', scheduleFitSummaries);
 resultsList.addEventListener('mousemove', showPreview);
 resultsList.addEventListener('mouseleave', hidePreview);
-// Passive: these only hide the tooltip, so the browser must not wait for them before
-// scrolling (non-passive wheel/touch listeners delayed every wheel scroll).
+// Passive so the browser can scroll without waiting for these handlers.
 resultsList.addEventListener('wheel', hidePreview, { passive: true });
 resultsList.addEventListener('touchstart', hidePreview, { passive: true });
 backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 tickerToggle.addEventListener('click', () => (tickerPanel ? closeTicker() : openTicker()));
 
-// Let the browser paint the page shell first: building the data and the first
-// render are slow, and they used to run before anything showed on screen.
+// Paint the page shell first; building the data and the first render are slow.
 function start() {
   window.ACTIVITY = window.buildActivity(100000);
   buildSearchIndex();
   countCallsPerMinute();
   window.ACTIVITY.forEach((event) => eventsById.set(event.id, event));
   renderAgents();
-  equalizeCardHeights();
-  // Whatever was typed before the data was ready.
   renderResults(searchInput.value);
   ready = true;
 }
