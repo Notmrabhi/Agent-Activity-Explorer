@@ -3,29 +3,51 @@ import { ChevronUpIcon } from '../ui/icons'
 
 export interface NewEventsPillProps {
   count: number
-  /** A search is active: the events can't be counted exactly, showing them reloads the list. */
+  /** Too many waiting to merge: showing them reloads the first page. */
   needsRefresh: boolean
+  /** That reload is running. */
+  refreshing: boolean
+  /** That reload failed; the events are still waiting. */
+  failed: boolean
   onShow: () => void
 }
 
 /**
- * Floats over the top of the list while new events wait. Nothing in the list moves until the
- * user clicks it. The live region announces once when events start waiting, not per event.
+ * Sits in the column-header row while new events wait, so it never covers a data row. Nothing
+ * in the list moves until the user clicks it. The live region is always mounted and announces
+ * once when events start waiting, not per event.
  */
-export function NewEventsPill({ count, needsRefresh, onShow }: NewEventsPillProps) {
-  const label = needsRefresh
-    ? 'New events · refresh'
-    : `${formatCount(count)} new ${count === 1 ? 'event' : 'events'}`
+export function NewEventsPill({
+  count,
+  needsRefresh,
+  refreshing,
+  failed,
+  onShow,
+}: NewEventsPillProps) {
+  const visible = count > 0 || needsRefresh
+  const events = `${formatCount(count)} new ${count === 1 ? 'event' : 'events'}`
+  let label = needsRefresh ? 'New events · refresh' : events
+  let name = needsRefresh ? 'Show new events (reloads the list)' : `Show ${events}`
+  if (refreshing) label = name = 'Loading new events…'
+  else if (failed) {
+    label = 'Couldn’t load new events · retry'
+    name = 'Couldn’t load new events. Retry'
+  }
+  let announcement = ''
+  if (failed) announcement = 'Couldn’t load new events'
+  else if (visible) announcement = 'New events available'
   return (
     <>
       <span role="status" className="sr-only">
-        {count > 0 ? 'New events available' : ''}
+        {announcement}
       </span>
-      {count > 0 && (
+      {visible && (
         <button
           type="button"
-          onClick={onShow}
-          className="absolute top-12 left-1/2 z-20 inline-flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full bg-accent px-3.5 text-sm font-medium text-on-accent shadow-popover hover:bg-accent-hover motion-safe:animate-panel-in"
+          onClick={refreshing ? undefined : onShow}
+          aria-label={name}
+          aria-disabled={refreshing || undefined}
+          className="absolute top-0.5 right-2 z-20 inline-flex h-8 items-center gap-1.5 rounded-full bg-accent px-3.5 text-sm font-medium text-on-accent shadow-popover hover:bg-accent-hover motion-safe:animate-panel-in"
         >
           <ChevronUpIcon size={14} />
           {label}
