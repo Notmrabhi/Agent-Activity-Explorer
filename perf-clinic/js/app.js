@@ -19,7 +19,7 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
-// Timestamps are UTC ISO strings, so HH:MM:SS is a slice (same output as toLocaleTimeString).
+// Timestamps are UTC ISO strings.
 function formatTime(iso) {
   return iso.slice(11, 19);
 }
@@ -35,7 +35,6 @@ function countByAgent(events) {
 function renderAgents() {
   const counts = countByAgent(window.ACTIVITY);
   grid.innerHTML = window.AGENTS.map((agent, index) => {
-    // Avatars 7-12 were byte-identical copies of 1-6.
     const image = 'assets/agents/agent-' + String((index % 6) + 1).padStart(2, '0') + '.webp';
     return (
       '<article class="agent-card">' +
@@ -60,7 +59,6 @@ function loadViewed() {
   }
 }
 
-// One localStorage write per render, capped so the stored list doesn't grow forever.
 function rememberViewed(items) {
   let changed = false;
   for (const item of items) {
@@ -78,7 +76,6 @@ function rememberViewed(items) {
 let sortedEvents = [];
 const searchTexts = [];
 
-// Sorted once. The sort is stable, so filtering keeps the old filter-then-sort order.
 function buildSearchIndex() {
   sortedEvents = window.ACTIVITY
     .map((event) => ({ event, time: Date.parse(event.timestamp) }))
@@ -91,7 +88,6 @@ function search(query) {
   if (!needle) return sortedEvents;
   const matches = [];
   for (let i = 0; i < sortedEvents.length; i++) {
-    // Same text as before (key names included) so results don't change; built once per event.
     let text = searchTexts[i];
     if (text === undefined) text = searchTexts[i] = JSON.stringify(sortedEvents[i]).toLowerCase();
     if (text.includes(needle)) matches.push(sortedEvents[i]);
@@ -122,14 +118,12 @@ function renderResults(query) {
   rememberViewed(page);
 }
 
-// Same sizes as the old loop (14px down to 11px in 0.5px steps), but each pass writes all
-// cells then reads all cells: one layout per pass instead of one per cell per step.
+// Each pass writes all cells, then reads all cells: one layout per pass.
 function fitSummaries() {
   const cells = [...resultsList.querySelectorAll('.result-summary')];
   cells.forEach((cell) => { cell.style.fontSize = '14px'; });
   const sizes = cells.map((cell) => {
     if (cell.scrollWidth <= cell.clientWidth) return 14;
-    // Start one step above the proportional estimate; the passes walk down to the exact size.
     const estimate = Math.ceil((14 * cell.clientWidth / cell.scrollWidth) * 2) / 2 + 0.5;
     return Math.min(13.5, Math.max(11, estimate));
   });
@@ -162,7 +156,6 @@ function countCallsPerMinute() {
   }
 }
 
-// Row positions are measured once per render/resize instead of per row on every scroll.
 let rows = [];
 let rowOffsets = [];
 let focusedRows = new Set();
@@ -177,12 +170,11 @@ let lastPadding = '';
 let lastContext = '';
 let scrollFrame = 0;
 function onScroll() {
-  // Rows move under a still cursor on any scroll (keys, scrollbar), so the tooltip would go stale.
+  // Any scroll moves rows under the cursor.
   preview.hidden = true;
   if (!scrollFrame) scrollFrame = requestAnimationFrame(updateOnScroll);
 }
 
-// All reads before writes, so a frame costs at most one layout.
 function updateOnScroll() {
   scrollFrame = 0;
   const scrolled = window.scrollY;
@@ -274,7 +266,6 @@ function openTicker() {
     }
   }, tickerIntervalMs);
 
-  // Removed together on close, so reopening doesn't stack listeners.
   tickerListeners = new AbortController();
   const { signal } = tickerListeners;
   window.addEventListener('resize', positionTicker, { signal });
@@ -308,13 +299,12 @@ window.addEventListener('scroll', onScroll, { passive: true });
 window.addEventListener('resize', scheduleFitSummaries);
 resultsList.addEventListener('mousemove', showPreview);
 resultsList.addEventListener('mouseleave', hidePreview);
-// Passive so the browser can scroll without waiting for these handlers.
 resultsList.addEventListener('wheel', hidePreview, { passive: true });
 resultsList.addEventListener('touchstart', hidePreview, { passive: true });
 backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 tickerToggle.addEventListener('click', () => (tickerPanel ? closeTicker() : openTicker()));
 
-// Paint the page shell first; building the data and the first render are slow.
+// Build data and render after the first paint.
 function start() {
   window.ACTIVITY = window.buildActivity(100000);
   buildSearchIndex();
