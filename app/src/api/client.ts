@@ -3,7 +3,6 @@ import { readErrorMessage } from './guards'
 
 export const API_BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:4000'
 
-/** A request that hangs longer than this is treated as failed (and retried). */
 export const REQUEST_TIMEOUT_MS = 20_000
 
 export type ApiErrorKind = 'network' | 'timeout' | 'http' | 'invalid-response'
@@ -20,10 +19,10 @@ export class ApiError extends Error {
     this.status = status
   }
 
-  /** Worth retrying automatically: the same request might succeed next time. */
   get retryable(): boolean {
     if (this.kind === 'network' || this.kind === 'timeout') return true
-    if (this.kind === 'http' && this.status !== null) return this.status >= 500 || this.status === 429
+    if (this.kind === 'http' && this.status !== null)
+      return this.status >= 500 || this.status === 429
     return false
   }
 
@@ -44,11 +43,7 @@ export function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
-/**
- * GET a JSON resource and validate it with `guard`.
- * `signal` comes from TanStack Query and aborts the request when its query is cancelled
- * (e.g. the filters changed), so a stale response can never overwrite a newer one.
- */
+/** `signal` aborts when the query is cancelled, so a stale response can't overwrite a newer one. */
 export async function apiGet<T>(
   path: string,
   guard: (value: unknown) => value is T,
@@ -64,7 +59,6 @@ export async function apiGet<T>(
   try {
     response = await fetch(url, { signal, headers: { Accept: 'application/json' } })
   } catch (error) {
-    // Caller cancelled: let the abort propagate untouched so TanStack Query ignores it.
     if (options.signal?.aborted) throw error
     if (timeout.aborted) throw new ApiError('timeout', 'Request timed out')
     throw new ApiError('network', error instanceof Error ? error.message : 'Network error')
@@ -75,7 +69,8 @@ export async function apiGet<T>(
     body = await response.json()
   } catch (error) {
     if (options.signal?.aborted) throw error
-    if (!response.ok) throw new ApiError('http', response.statusText || 'Request failed', response.status)
+    if (!response.ok)
+      throw new ApiError('http', response.statusText || 'Request failed', response.status)
     throw new ApiError('invalid-response', 'Response was not JSON', response.status)
   }
 

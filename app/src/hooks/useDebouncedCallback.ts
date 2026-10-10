@@ -24,7 +24,10 @@ export function useDebouncedCallback<Args extends unknown[]>(
   const debounced = useMemo(() => {
     // One mutable box, private to this closure (not render state). Mutating a property instead of
     // reassigning captured `let`s keeps the React compiler lint from flagging it.
-    const box: { timer: number | undefined; pending: Args | null } = { timer: undefined, pending: null }
+    const box: { timer: number | undefined; pending: Args | null } = {
+      timer: undefined,
+      pending: null,
+    }
 
     const run = () => {
       box.timer = undefined

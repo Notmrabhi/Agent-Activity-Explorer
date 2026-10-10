@@ -8,22 +8,14 @@ export type LiveStatus = 'off' | 'connecting' | 'live' | 'reconnecting'
 const MAX_BACKOFF_MS = 10_000
 
 /**
- * Subscribes to GET /stream (Server-Sent Events) while `enabled`.
- *
- * EventSource retries dropped connections by itself, but gives up for good when the server
- * answers with an error status, which this API does at random. So when it closes we reconnect
- * ourselves with exponential backoff, and reset the backoff once a connection opens. Coming
- * back online or to the tab retries at once.
- *
- * `onOpen` runs on every (re)connect: the stream doesn't replay what was missed while it was
- * down (or off), so the caller catches up from the API.
+ * EventSource gives up for good on an error status, which this API sends at random, so we
+ * reconnect ourselves with backoff. `onOpen` runs on every (re)connect so the caller can catch up.
  */
 export function useLiveStream(
   enabled: boolean,
   onEvent: (event: EventSummary) => void,
   onOpen: () => void,
 ): LiveStatus {
-  // Starts as 'connecting'; while disabled the hook reports 'off' regardless.
   const [status, setStatus] = useState<LiveStatus>('connecting')
   const handleEvent = useEffectEvent(onEvent)
   const handleOpen = useEffectEvent(onOpen)

@@ -5,15 +5,8 @@ import { queryKeys } from '../api/queryKeys'
 import type { EventFilters, EventSummary } from '../api/types'
 
 /**
- * The event list as an infinite (cursor-paginated) query.
- *
- * - The query key contains the filters, so a filter change starts a fresh list and TanStack
- *   aborts the old request via its AbortSignal: a slow stale response can never win the race.
- * - `keepPreviousData` keeps the old rows on screen (dimmed) while the new filters load,
- *   instead of flashing an empty table.
- * - `staleTime: Infinity`: refetching a stale infinite query re-requests *every* loaded page in
- *   sequence (could be 100+ requests against an API that fails ~7% of the time), so we never
- *   refetch automatically. Data refreshes on reload or when the filters change.
+ * Filters are in the key, so a filter change aborts the old request. staleTime Infinity: a refetch
+ * would re-request every loaded page against an API that fails ~7% of the time.
  */
 export function useEventList(filters: EventFilters) {
   const query = useInfiniteQuery({
@@ -34,7 +27,7 @@ export function useEventList(filters: EventFilters) {
   return { ...query, rows, total }
 }
 
-/** Full event for the detail panel. Events are immutable, so cached details never go stale. */
+/** Events are immutable, so cached details never go stale. */
 export function useEventDetail(id: string | null) {
   return useQuery({
     queryKey: queryKeys.event(id ?? ''),
@@ -43,7 +36,6 @@ export function useEventDetail(id: string | null) {
   })
 }
 
-/** Agent names for the filter. Fetched once per session. */
 export function useAgents() {
   return useQuery({
     queryKey: queryKeys.agents(),
@@ -52,11 +44,7 @@ export function useAgents() {
   })
 }
 
-/**
- * Timestamp of the newest event (null when there are none): the anchor quick time ranges count
- * back from. Re-read after a minute, since new events keep arriving and "last 15 minutes" should
- * include them.
- */
+/** The anchor quick time ranges count back from. */
 export function useNewestEventTime() {
   return useQuery({
     queryKey: queryKeys.newestEvent(),

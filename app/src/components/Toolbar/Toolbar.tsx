@@ -9,29 +9,18 @@ import { StatusFilter } from './StatusFilter'
 import { TimeRangeFilter } from './TimeRangeFilter'
 
 export interface ToolbarProps {
-  /** Current filters, from the URL. */
   filters: EventFilters
   onQueryChange: (q: string, options: { replace: boolean }) => void
   onAgentsChange: (agents: string[]) => void
   onStatusChange: (status: EventStatus | null) => void
-  /** Absolute ISO UTC bounds; either may be null. */
   onTimeRangeChange: (range: TimeRange) => void
   onClearFilters: () => void
-  /** Total matching events, or null before the first page has loaded. */
   total: number | null
-  /** Rows loaded so far. */
   loadedCount: number
-  /** True while the list is loading for the current filters. */
   isLoading: boolean
-  /** Forwarded to the search <input> (the page focuses it on "/"). */
   searchInputRef?: Ref<HTMLInputElement>
 }
 
-/**
- * Search and filter bar: one control per dimension (Jira-style filter buttons), a "Clear
- * filters" shortcut when anything is filtered, and the result count on the right.
- * Below md the search box takes its own full-width row and the filters wrap under it.
- */
 export function Toolbar({
   filters,
   onQueryChange,
@@ -48,14 +37,11 @@ export function Toolbar({
 
   const handleClear = () => {
     onClearFilters()
-    // This button disappears once nothing is filtered; park focus in the search box instead of
-    // dropping it to <body>. (searchInputRef may be a callback ref, so look the input up.)
+    // The button disappears: keep focus off <body>.
     regionRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()
   }
 
   return (
-    // role="search" on a div rather than <search>: same landmark, wider browser and
-    // test-tooling support.
     <div
       ref={regionRef}
       role="search"

@@ -4,33 +4,24 @@ import { IconButton } from './IconButton'
 import { AlertTriangleIcon, CheckIcon, CopyIcon } from './icons'
 
 export interface CopyButtonProps {
-  /** Text to copy. A function is called on click, for values that are costly to build (big JSON). */
+  /** A function is called on click, for values costly to build. */
   value: string | (() => string)
-  /**
-   * Accessible name, e.g. "Copy event ID". When `children` is given it should start with the
-   * visible text ("Copy JSON" → "Copy JSON of arguments") so voice control users can say it.
-   */
+  /** Must start with the visible text, so voice control users can say it. */
   label: string
-  /** Visible text. Omit for an icon-only square button. */
   children?: ReactNode
-  /** Leading icon for the text variant. Default <CopyIcon />. */
   icon?: ReactNode
-  /** Default 'secondary'. */
   variant?: 'secondary' | 'ghost'
-  /** Default 'sm'. */
   size?: ButtonSize
   className?: string
-  /** Called after a successful copy, e.g. to show a toast. */
   onCopied?: () => void
 }
 
 type CopyState = 'idle' | 'copied' | 'failed'
 
-/** How long the "Copied" confirmation stays visible. */
 const FEEDBACK_MS = 1500
 
 async function writeToClipboard(text: string): Promise<void> {
-  // The async API needs a secure context (https or localhost); fall back for plain http.
+  // The async API needs https or localhost.
   if (navigator.clipboard && window.isSecureContext) {
     await navigator.clipboard.writeText(text)
     return
@@ -45,16 +36,10 @@ async function writeToClipboard(text: string): Promise<void> {
   textarea.select()
   const ok = document.execCommand('copy')
   textarea.remove()
-  // select() moved focus to the textarea; give it back to the button.
   if (previousFocus instanceof HTMLElement) previousFocus.focus()
   if (!ok) throw new Error('Copy command was rejected')
 }
 
-/**
- * Copies a value and confirms it: the icon turns into a check and the text into "Copied" for
- * 1.5 s (a warning icon and "Failed" if the browser refused). Screen readers hear "Copied" or
- * "Copy failed" through a polite live region.
- */
 export function CopyButton({
   value,
   label,
@@ -83,7 +68,6 @@ export function CopyButton({
   }
 
   const announcement = state === 'copied' ? 'Copied' : state === 'failed' ? 'Copy failed' : ''
-  // Colour the glyph, not the button, so it never fights the variant's text colour.
   const glyph =
     state === 'copied' ? (
       <CheckIcon size={14} className="text-ok" />
@@ -114,7 +98,7 @@ export function CopyButton({
           onClick={handleClick}
           className={className}
         >
-          {/* Both texts share one grid cell, so the button keeps its width when the text swaps. */}
+          {/* Both texts share one cell, so the width doesn't jump. */}
           <span className="grid">
             <span className={`col-start-1 row-start-1 ${state === 'idle' ? '' : 'invisible'}`}>
               {children}
@@ -125,7 +109,6 @@ export function CopyButton({
           </span>
         </Button>
       )}
-      {/* Always mounted: a live region only announces changes made after it is in the DOM. */}
       <span className="sr-only" aria-live="polite">
         {announcement}
       </span>

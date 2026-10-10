@@ -1,12 +1,8 @@
-// Inline stroke icons (24×24 grid, currentColor), so they inherit text colour and need no
-// network request. Icons are always decorative: the accessible name comes from visible text
-// or the parent control's label, never from the SVG.
+// Always decorative: the name comes from visible text or the parent's label.
 import type { ReactNode } from 'react'
 
 export interface IconProps {
-  /** Rendered width and height in px. Default 16. */
   size?: number
-  /** Default 2. The design uses 2.4 for 14px status icons and 1.6 for 40px state icons. */
   strokeWidth?: number
   className?: string
 }

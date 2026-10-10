@@ -6,29 +6,20 @@ import { AlertTriangleIcon } from '../ui/icons'
 import { Spinner } from './Spinner'
 
 export interface ErrorStateProps {
-  /** Whatever the query threw. ApiError gets a tailored message and its technical detail. */
   error: unknown
   onRetry: () => void
-  /** Default "Couldn't load events". */
   title?: string
-  /** Overrides the human message derived from `error`. */
   message?: ReactNode
-  /** A retry is in flight: the button shows a spinner and ignores clicks. */
   retrying?: boolean
-  /** Left-aligned bordered box for the detail panel instead of the centred full-area state. */
   compact?: boolean
-  /** Extra actions after "Try again", e.g. a "Close panel" button. */
   actions?: ReactNode
-  /** Heading level for the full variant. Default 3. */
   headingLevel?: 2 | 3 | 4
   className?: string
 }
 
-/** Plain-language cause, without jargon. The technical line is shown separately in mono. */
 function describe(error: unknown): string {
   if (!(error instanceof ApiError)) return 'Something went wrong while loading.'
-  // Retryable errors were already retried by TanStack Query (lib/queryClient.ts), so say so:
-  // it tells the user that pressing the button again right away may not help.
+  // Already retried automatically, so say so.
   const tried = error.retryable ? ` We tried ${MAX_RETRIES + 1} times.` : ''
   switch (error.kind) {
     case 'timeout':
@@ -52,11 +43,7 @@ function technicalDetail(error: unknown): string | null {
   return null
 }
 
-/**
- * Failed-load state: what happened in plain words, the technical detail in mono, and a way to
- * try again. The text sits in a role="alert" region so it is announced when it appears; the
- * button is outside it so its "Retrying…" label does not re-trigger the alert.
- */
+/** The button is outside the alert, so "Retrying…" doesn't re-trigger it. */
 export function ErrorState({
   error,
   onRetry,

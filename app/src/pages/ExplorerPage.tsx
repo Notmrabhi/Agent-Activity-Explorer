@@ -34,7 +34,6 @@ import { hasActiveFilters, serializeExplorerParams } from '../lib/urlState'
 
 const APP_TITLE = 'Agent Activity'
 
-/** The resize handle's aria-controls target. */
 const DETAIL_PANEL_ID = 'event-detail-panel'
 
 /** Any dialog except the detail panel: those own their keys (shortcuts dialog, filter popovers). */
@@ -54,10 +53,7 @@ function isEditableTarget(target: Element): boolean {
   )
 }
 
-/**
- * Names the filters that produced nothing, e.g. Nothing for “stripe” from <b>devops</b> with
- * status <b>Error</b> <b>between Oct 09 11:00 and 12:00 UTC</b>.
- */
+/** e.g. Nothing for “stripe” from devops with status Error between Oct 09 11:00 and 12:00 UTC. */
 function describeEmpty(filters: EventFilters, newest: string | null | undefined): ReactNode {
   const strong = 'font-medium text-fg'
   const q = filters.q.trim()
@@ -95,13 +91,7 @@ function describeEmpty(filters: EventFilters, newest: string | null | undefined)
   )
 }
 
-/**
- * The whole app: header, search/filter bar, the virtualised event list and the detail panel.
- *
- * All view state comes from the URL (useExplorerUrlState); all server state from TanStack Query
- * (useEventList). This component only wires them together, picks which list state to show and
- * owns the page-level keyboard shortcuts.
- */
+/** View state from the URL, server state from TanStack Query; this page wires them together. */
 export default function ExplorerPage() {
   const url = useExplorerUrlState()
   const {
@@ -116,7 +106,6 @@ export default function ExplorerPage() {
     closeEvent,
   } = url
   const list = useEventList(filters)
-  // Already loaded for the time-range presets; the empty state uses it to explain a range past the data.
   const newestTime = useNewestEventTime()
   const { rows, total } = list
   const docked = useMediaQuery(DOCKED_PANEL_QUERY)
@@ -128,12 +117,10 @@ export default function ExplorerPage() {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
-  // --- Live mode ------------------------------------------------------------------------------
-  // New events go straight in only when that can't disturb anyone: the list is at the top, the
-  // pointer isn't over it and focus isn't in it. Otherwise they wait behind the "new events" pill.
+  // Live events go straight in only at the top with no pointer or focus in the list; otherwise
+  // they wait behind the pill.
   const [liveOn, setLiveOn] = useState(false)
-  // :hover rather than pointerenter/leave bookkeeping, which can miss a transition and then
-  // insert under a pointer that is resting on the list.
+  // :hover, because pointerenter/leave can miss a transition.
   const listAreaRef = useRef<HTMLDivElement>(null)
   const canInsertNow = useCallback(() => {
     if (listAreaRef.current?.matches(':hover')) return false
@@ -141,7 +128,6 @@ export default function ExplorerPage() {
     return tableRef.current?.isAtTop() ?? true
   }, [])
   const live = useLiveEvents(liveOn, filters, canInsertNow)
-  // Set when the user asks for the waiting events: once they are in, show the newest one.
   const revealNewestRef = useRef(false)
   const { showPending } = live
   const showNewEvents = useCallback(() => {
@@ -151,7 +137,6 @@ export default function ExplorerPage() {
     })
   }, [showPending])
 
-  // id -> position in the loaded rows: the panel's summary and its prev/next neighbours.
   const indexById = useMemo(() => new Map(rows.map((row, index) => [row.id, index])), [rows])
   const openIndex = eventId === null ? undefined : indexById.get(eventId)
   const openSummary: EventSummary | undefined =
@@ -159,15 +144,10 @@ export default function ExplorerPage() {
   const prevRow = openIndex === undefined ? undefined : rows[openIndex - 1]
   const nextRow = openIndex === undefined ? undefined : rows[openIndex + 1]
 
-  // --- Prev / next ----------------------------------------------------------------------------
-  // The router writes the URL at once but applies it in a transition, so `eventId` can lag a
-  // render behind a fast J/K burst (or key repeat). Stepping from the lagging id would re-request
-  // the same neighbour and stall, so steps are taken from the newest id we asked for. Ids are
-  // dropped once the URL catches up; any other change (Back, a click in the list) clears them.
+  // `eventId` lags a render behind a fast J/K burst (router transition), so steps start from the
+  // newest id we asked for, not the lagging one.
   const requestedIdsRef = useRef<string[]>([])
-  // The event the panel is showing or about to show (the newest step asked for). Focus return
-  // uses it: a fast "kkk Esc" can close the panel before the router commits the last steps, and
-  // the row to return to is the one the user stepped to, not the last one rendered.
+  // The newest step asked for: a fast "kkk Esc" must return focus to the row the user reached.
   const lastOpenIdRef = useRef(eventId)
   useLayoutEffect(() => {
     const requested = requestedIdsRef.current
@@ -176,8 +156,7 @@ export default function ExplorerPage() {
     if (eventId !== null) lastOpenIdRef.current = requestedIdsRef.current.at(-1) ?? eventId
   }, [eventId])
 
-  // The pill disappears once clicked; move focus to the newest row so keyboard users land
-  // somewhere sensible (focusRow also scrolls it into view).
+  // After the pill is clicked, focus the newest row so keyboard users don't land on <body>.
   const eventsWaiting = live.pendingCount > 0 || live.needsRefresh
   useLayoutEffect(() => {
     const newest = rows[0]
@@ -194,7 +173,6 @@ export default function ExplorerPage() {
       if (!target) return
       requestedIdsRef.current.push(target.id)
       lastOpenIdRef.current = target.id
-      // replace: stepping through events should not leave one history entry per event.
       openEvent(target.id, { replace: true })
     },
     [eventId, indexById, rows, openEvent],
@@ -202,9 +180,7 @@ export default function ExplorerPage() {
   const goPrev = useCallback(() => step(-1), [step])
   const goNext = useCallback(() => step(1), [step])
 
-  // Opening from the list (click, Enter, J/K in the grid) records the target the same way `step`
-  // does. Otherwise "click row B, Esc" within one render returns focus to the previous row A,
-  // because `eventId` has not caught up with the click yet.
+  // Recorded like `step`, so "click row B, Esc" doesn't return focus to the previous row.
   const openFromList = useCallback(
     (id: string, options: { replace?: boolean }) => {
       requestedIdsRef.current = []
@@ -214,10 +190,7 @@ export default function ExplorerPage() {
     [openEvent],
   )
 
-  // --- Focus return ---------------------------------------------------------------------------
-  // When the panel closes (Esc, close button, Back), put focus back on the row that was open, so
-  // keyboard users keep their place. Only when focus was lost with the panel (on <body>) or is
-  // still in the list: if the user closed it by moving somewhere else, leave focus there.
+  // Panel closed: focus the row that was open, unless the user already moved focus elsewhere.
   const prevEventIdRef = useRef(eventId)
   useEffect(() => {
     const closedId = prevEventIdRef.current
@@ -230,19 +203,15 @@ export default function ExplorerPage() {
     if (!tableRef.current?.focusRow(rowId)) tableRef.current?.focusTable()
   }, [eventId])
 
-  // --- Document title -------------------------------------------------------------------------
-  // The detail query is shared with the panel (same key), so this adds no request. It names a
-  // cold-linked event that is not in the loaded rows yet.
+  // Same query key as the panel, so no extra request.
   const detail = useEventDetail(eventId)
   const openHead = openSummary ?? detail.data
   useEffect(() => {
     document.title = openHead ? `${openHead.tool} · ${openHead.agent} — ${APP_TITLE}` : APP_TITLE
   }, [openHead])
 
-  // --- Global shortcuts -----------------------------------------------------------------------
-  // "/" search, "?" shortcuts, J/K step through events while the panel is open. Keys typed into
-  // fields, already handled (the grid handles its own J/K and arrows and stops them), or pressed
-  // inside another dialog are left alone. Esc is the panel's and the dialogs' own business.
+  // "/" search, "?" shortcuts, J/K with the panel open. Ignored in fields, other dialogs, or when
+  // already handled.
   const onDocumentKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (event.defaultPrevented || event.isComposing) return
     if (event.ctrlKey || event.metaKey || event.altKey) return
@@ -255,7 +224,6 @@ export default function ExplorerPage() {
 
     switch (event.key) {
       case '/':
-        // The overlay panel is modal (the toolbar is inert behind it), so "/" can't reach search.
         if (inPanel && !docked) return
         event.preventDefault()
         searchInputRef.current?.focus()
@@ -283,13 +251,11 @@ export default function ExplorerPage() {
     return () => document.removeEventListener('keydown', onDocumentKeyDown)
   }, [])
 
-  // --- List actions ---------------------------------------------------------------------------
   const { refetch, fetchNextPage } = list
   const retryList = useCallback(() => {
     void refetch()
   }, [refetch])
-  // A slow next page is re-requested on its own; anything else (first page, new filters) restarts
-  // the list query. cancelRefetch aborts the slow request instead of waiting behind it.
+  // cancelRefetch aborts the slow request instead of queueing behind it.
   const retrySlow = useCallback(() => {
     if (list.isFetchingNextPage) void fetchNextPage({ cancelRefetch: true })
     else void refetch({ cancelRefetch: true })
@@ -301,12 +267,11 @@ export default function ExplorerPage() {
   const focusSearch = () => searchInputRef.current?.focus()
   const clearAllFromEmpty = () => {
     clearFilters()
-    // The empty state (and the button) unmounts; park focus in the search box, not on <body>.
+    // The button unmounts; keep focus off <body>.
     focusSearch()
   }
 
-  // Equal filters give equal strings (canonical order, no empty params). Excludes the event id,
-  // so opening an event does not scroll the list back to the top.
+  // Excludes the event id, so opening an event doesn't scroll the list to the top.
   const resetKey = serializeExplorerParams({ filters, eventId: null }).toString()
 
   const timeRangeActive = hasTimeRange(filters)
@@ -337,9 +302,7 @@ export default function ExplorerPage() {
             <Button variant="primary" onClick={clearAllFromEmpty}>
               Clear all filters
             </Button>
-            {/* With several filters, offer to loosen just the most likely culprit. A narrow time
-                window comes first: a preset or shared link outside the data span empties any
-                combination of the other filters. */}
+            {/* Several filters: offer to remove the most likely culprit, time range first. */}
             {activeFilterCount > 1 && timeRangeActive && (
               <Button onClick={() => setTimeRange({ from: null, to: null })}>
                 Remove time range
@@ -424,12 +387,10 @@ export default function ExplorerPage() {
         onClearFilters={clearFilters}
         total={total}
         loadedCount={rows.length}
-        // Placeholder rows belong to the previous filters: the count dims until the new ones land.
         isLoading={list.isPending || list.isPlaceholderData}
         searchInputRef={searchInputRef}
       />
-      {/* Carries the docked panel's width as a CSS variable, which ResizeHandle rewrites while
-          dragging without re-rendering this page. */}
+      {/* Panel width as a CSS variable: ResizeHandle changes it without re-rendering the page. */}
       <div
         ref={layoutRef}
         style={panelWidthStyle(panelWidth.width)}
@@ -438,7 +399,6 @@ export default function ExplorerPage() {
         <main className="flex min-w-0 flex-1 flex-col px-4 pt-4 md:px-6">
           {listSlow && <SlowNotice onRetry={retrySlow} className="mb-3 shrink-0" />}
           <div className="relative flex min-h-0 flex-1 flex-col" ref={listAreaRef}>
-            {/* Always mounted so its live region can announce; shows nothing while live is off. */}
             <NewEventsPill
               count={liveOn ? live.pendingCount : 0}
               needsRefresh={liveOn && live.needsRefresh}

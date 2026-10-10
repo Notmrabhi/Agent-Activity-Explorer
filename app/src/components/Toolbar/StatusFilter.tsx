@@ -14,15 +14,7 @@ export interface StatusFilterProps {
 const OPTIONS: readonly (EventStatus | null)[] = [null, ...EVENT_STATUSES]
 const ARROW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
 
-/**
- * Single-select status filter: native radios in a popover, so arrow keys and screen readers
- * work out of the box. A selection applies immediately.
- *
- * Arrow keys move the native radio selection, which fires change events too. Closing on those
- * would shut the popover on the first arrow press, so we track how the change happened:
- * a click, Space or Enter applies and closes (focus back on the trigger); arrows apply and keep
- * the popover open, like a native radio group.
- */
+/** Native radios. A click or Enter applies and closes; arrows apply and keep it open. */
 export function StatusFilter({ value, onChange }: StatusFilterProps) {
   const [open, setOpen] = useState(false)
   const anchorRef = useRef<HTMLButtonElement>(null)
@@ -31,8 +23,7 @@ export function StatusFilter({ value, onChange }: StatusFilterProps) {
   const radioName = useId()
   const intent = useRef<'commit' | 'navigate'>('commit')
 
-  // The Popover focuses its first radio ("All statuses"); start on the checked one instead,
-  // as a native radio group would. Child effects run first, so this wins.
+  // Focus the checked radio, not the first (child effects run first, so this wins).
   useEffect(() => {
     if (!open) return
     intent.current = 'commit'
@@ -49,7 +40,6 @@ export function StatusFilter({ value, onChange }: StatusFilterProps) {
     if (intent.current === 'commit') closeAndReturnFocus()
   }
 
-  // Clicking (or pressing Space on) the option that is already selected fires no change event.
   const handleClick = (option: EventStatus | null) => {
     if (option === value && intent.current === 'commit') closeAndReturnFocus()
   }
@@ -60,7 +50,6 @@ export function StatusFilter({ value, onChange }: StatusFilterProps) {
     } else if (event.key === ' ') {
       intent.current = 'commit'
     } else if (event.key === 'Enter') {
-      // Arrows already applied the value; Enter confirms it.
       event.preventDefault()
       closeAndReturnFocus()
     }

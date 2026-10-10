@@ -1,9 +1,5 @@
-// Time-range filter logic: presets, UTC <input> conversion, validation and labels. Pure
-// functions so the edge cases (time zones, open ends, bad input) can be unit tested.
-//
-// Everything here is UTC. The table shows UTC times, so the range the user types must be read in
-// the same zone; reading a datetime-local value as the viewer's local time would make the same
-// link (and the same typed numbers) mean different events in different offices.
+// Everything is UTC, like the table: local time would make one link mean different events in
+// different time zones.
 import type { TimeRange } from '../api/types'
 import { formatTimestampUtc } from './format'
 
@@ -28,10 +24,7 @@ const ZONELESS_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?$
 /** ISO 8601 date or date-time as the URL may carry it: zone optional (Z or ±hh:mm). */
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?)?$/
 
-/**
- * Date.parse rolls impossible dates over ("2026-02-30" → Mar 2) instead of rejecting them, so
- * check the YYYY-MM-DD prefix against the real calendar.
- */
+/** Date.parse rolls "2026-02-30" over to Mar 2 instead of rejecting it. */
 function isCalendarDate(value: string): boolean {
   const year = Number(value.slice(0, 4))
   const month = Number(value.slice(5, 7))
@@ -41,11 +34,8 @@ function isCalendarDate(value: string): boolean {
 }
 
 /**
- * A URL `from`/`to` value → canonical ISO UTC ("2026-10-09T11:00:00.000Z"), or null if invalid.
- *
- * Only ISO 8601 is accepted: Date.parse alone also takes "Oct 9 2026" and similar, which it
- * reads in the viewer's local zone, so one link would mean different ranges to different people.
- * A date-time without a zone is read as UTC, since every time on screen is UTC.
+ * URL `from`/`to` → canonical ISO UTC, or null. Only ISO 8601: Date.parse also reads "Oct 9 2026"
+ * in local time. No zone means UTC.
  */
 export function normalizeTimestamp(value: string | null | undefined): string | null {
   const trimmed = value?.trim() ?? ''
@@ -56,15 +46,8 @@ export function normalizeTimestamp(value: string | null | undefined): string | n
 }
 
 /**
- * Range for a quick preset, counted back from `anchorIso` (the newest event, not the wall clock:
- * the dataset is historical, so "the last hour" by the clock would always be empty).
- *
- * - The start is rounded down to the minute, so the label ("Since Oct 09 11:23") is exact and the
- *   value round-trips through the minute-precision custom-range inputs unchanged.
- * - The end is left open (`to: null`) rather than set to the anchor: `to` is exclusive, so it
- *   would cut off the very newest event, and events that arrive later still belong to "since".
- *
- * Returns null if the anchor is not a valid timestamp.
+ * Counted back from the newest event, not the clock (the data is historical). Start rounded to the
+ * minute; end left open, since `to` is exclusive and would cut off the newest event.
  */
 export function presetRange(anchorIso: string, durationMs: number): TimeRange | null {
   const anchor = Date.parse(anchorIso)
@@ -80,12 +63,7 @@ export function toUtcInputValue(iso: string | null): string {
   return Number.isNaN(ms) ? '' : new Date(ms).toISOString().slice(0, 16)
 }
 
-/**
- * A datetime-local value read as UTC → ISO, or null when empty or invalid.
- *
- * The zone is appended by hand (never `new Date(value)`, which would use local time), and the
- * result must round-trip: Date.parse rolls impossible dates like Feb 30 over to March.
- */
+/** datetime-local value read as UTC (never `new Date(value)`, which uses local time). */
 export function fromUtcInputValue(value: string): string | null {
   const trimmed = value.trim()
   if (!ZONELESS_DATE_TIME.test(trimmed)) return null
@@ -108,11 +86,7 @@ export const RANGE_MESSAGES = {
   order: 'Start must be before end',
 } as const
 
-/**
- * Validate the custom-range inputs. Both ends are optional; a non-empty value must be a valid
- * date-time, and when both are set the start must be strictly before the end (`to` is exclusive,
- * so from == to can never match anything). Returns an empty object when the range is valid.
- */
+/** Both ends optional; start must be strictly before end (`to` is exclusive). */
 export function validateRange(fromInput: string, toInput: string): RangeErrors {
   const errors: RangeErrors = {}
   const from = fromUtcInputValue(fromInput)
@@ -129,21 +103,13 @@ export function hasRangeErrors(errors: RangeErrors): boolean {
   return errors.from !== undefined || errors.to !== undefined || errors.form !== undefined
 }
 
-/**
- * Short UTC label parts, reusing the table's format so the button reads like the rows:
- * "Oct 09 · 11:00:00.000" → day "Oct 09", time "11:00". Seconds are kept only when set
- * (a hand-edited link), so the label never claims a rounder time than the filter uses.
- */
+/** "Oct 09 · 11:00:00.000" → day "Oct 09", time "11:00". Seconds kept only when set. */
 function labelParts(iso: string): { day: string; time: string } {
   const [day = iso, time = ''] = formatTimestampUtc(iso).split(' · ')
   return { day, time: time.replace(/\.000$/, '').replace(/^(\d{2}:\d{2}):00$/, '$1') }
 }
 
-/**
- * Compact label for the filter button, in UTC:
- * "Oct 09 11:00 → 12:00", "Oct 08 23:00 → Oct 09 01:00", "Since Oct 09 11:23",
- * "Until Oct 09 12:00". Empty string when there is no range.
- */
+/** "Oct 09 11:00 → 12:00", "Since Oct 09 11:23", "Until Oct 09 12:00". */
 export function describeRange(from: string | null, to: string | null): string {
   const start = from === null ? null : labelParts(from)
   const end = to === null ? null : labelParts(to)
@@ -156,11 +122,7 @@ export function describeRange(from: string | null, to: string | null): string {
   return ''
 }
 
-/**
- * The range as words for sentences such as the empty state ("Nothing for “stripe” between …"):
- * "between Oct 09 11:00 and 12:00 UTC", "since Oct 09 11:23 UTC", "before Oct 09 12:00 UTC"
- * (`to` is exclusive, so "before", not "until"). Empty string when there is no range.
- */
+/** "between Oct 09 11:00 and 12:00 UTC", "since …", "before …" (`to` is exclusive). */
 export function describeRangeInWords(from: string | null, to: string | null): string {
   const start = from === null ? null : labelParts(from)
   const end = to === null ? null : labelParts(to)

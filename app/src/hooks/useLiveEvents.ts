@@ -25,15 +25,11 @@ const BATCH_MS = 250
 
 export interface LiveEvents {
   status: LiveStatus
-  /** New events waiting to be shown. */
   pendingCount: number
   /** Too many (or an unknown number of) events waiting: showing them reloads the first page. */
   needsRefresh: boolean
-  /** The first page is being reloaded for the pill. */
   refreshing: boolean
-  /** The last reload failed; the events are still waiting. */
   refreshFailed: boolean
-  /** Show the waiting events. Resolves to false when that failed and they are still waiting. */
   showPending: () => Promise<boolean>
 }
 
@@ -61,7 +57,7 @@ function addWaiting(
     : { view, events: all, overflow: false }
 }
 
-/** The newest page for `filters`, always from the server (fetchQuery doesn't retry by default). */
+/** Always from the server; fetchQuery doesn't retry by default. */
 function fetchHead(queryClient: QueryClient, filters: EventFilters): Promise<EventsPage> {
   return queryClient.fetchQuery({
     queryKey: queryKeys.eventsHead(filters),
@@ -73,16 +69,10 @@ function fetchHead(queryClient: QueryClient, filters: EventFilters): Promise<Eve
 }
 
 /**
- * Live mode for the event list. New events are only inserted straight away when `canInsertNow`
- * says the reader won't be disturbed (top of the list, not pointing at or focused in it);
- * otherwise they wait until the user asks for them.
- *
- * - The list cache is never written while one of its requests is in flight: TanStack would
- *   overwrite the write with the pages that request started from. Events that arrive meanwhile
- *   are held and merged once it settles; showing waiting events cancels the request first.
- * - The stream doesn't replay what was missed while it was down, off, or showing other filters,
- *   so on every (re)connect and filter change the first page is fetched and merged. With a
- *   search active the server is asked the same way, since only it can match the search.
+ * - Never write the list cache while one of its requests is in flight: TanStack would overwrite
+ *   it with the pages that request started from. Events are held until it settles.
+ * - The stream doesn't replay missed events, so every (re)connect and filter change fetches the
+ *   first page and merges it. A search is always checked by the server.
  */
 export function useLiveEvents(
   enabled: boolean,
@@ -93,7 +83,6 @@ export function useLiveEvents(
   const listKey = queryKeys.events(filters)
   const keyString = JSON.stringify(listKey)
 
-  // Each time live mode is turned on starts with nothing waiting: what was missed is fetched.
   const [session, setSession] = useState(0)
   const [wasEnabled, setWasEnabled] = useState(enabled)
   if (wasEnabled !== enabled) {
@@ -106,7 +95,7 @@ export function useLiveEvents(
     viewRef.current = view
   })
 
-  // The ref is the source of truth (a burst of messages arrives between renders).
+  // The ref is the source of truth: a burst arrives between renders.
   const waitingRef = useRef<Waiting>({ view, events: [], overflow: false })
   const [waiting, setWaiting] = useState<Waiting>({ view, events: [], overflow: false })
   const updateWaiting = useCallback((next: Waiting) => {
@@ -118,15 +107,14 @@ export function useLiveEvents(
   const [refreshing, setRefreshing] = useState(false)
   const [failedView, setFailedView] = useState<string | null>(null)
 
-  // The handlers below read this render's values; timers and awaits reach the latest ones
-  // through `handlers`.
+  // Timers and awaits reach the latest handlers through `handlers`.
   const listBusy = () => queryClient.isFetching({ queryKey: listKey, exact: true }) > 0
   const nothingWaiting = () => {
     const current = waitingRef.current
     return current.view !== view || (current.events.length === 0 && !current.overflow)
   }
 
-  // `forView` guards against answers that land after the filters changed or live was turned off.
+  // `forView` drops answers that land after the filters changed or live was turned off.
   const receive = (forView: string, events: EventSummary[]) => {
     if (!enabled || forView !== view || events.length === 0) return
     const data = queryClient.getQueryData<ListData>(listKey)
@@ -135,7 +123,6 @@ export function useLiveEvents(
     if (data && !(nothingWaiting() && canInsertNow())) {
       updateWaiting(addWaiting(waitingRef.current, view, fresh))
     } else if (!data || listBusy()) {
-      // Would go straight in, but the list is loading: hold them until it settles.
       const held = heldRef.current.view === view ? heldRef.current.events : []
       heldRef.current = { view, events: [...held, ...fresh] }
       if (heldRef.current.events.length > MAX_PENDING) {
@@ -159,8 +146,7 @@ export function useLiveEvents(
       receive(view, head.items)
       return
     }
-    // Too many new events to merge (or the check failed): reload the first page, right away
-    // only if no one is reading.
+    // Gap or failed check: reload the first page, right away only if no one is reading.
     if (head && nothingWaiting() && canInsertNow() && !listBusy()) {
       queryClient.setQueryData<ListData>(listKey, { pages: [head], pageParams: [null] })
     } else {
@@ -170,16 +156,13 @@ export function useLiveEvents(
 
   const catchUp = async () => {
     const forView = view
-    // While the list is loading for the first time, that request is already up to date.
     const data = queryClient.getQueryData<ListData>(listKey)
     if (!data) return
     const newest = data.pages[0]?.items[0]
     let head: EventsPage | null = null
     try {
       head = await fetchHead(queryClient, filters)
-    } catch {
-      // Unknown what was missed: offer a reload.
-    }
+    } catch {}
     handlers.current.applyHead(forView, newest, head)
   }
 
@@ -196,7 +179,6 @@ export function useLiveEvents(
   })
 
   const checkTimerRef = useRef(0)
-  // Stream events are collected and added once per BATCH_MS: one list update instead of one per event.
   const batchRef = useRef<{ view: string; events: EventSummary[]; timer: number }>({
     view,
     events: [],
@@ -237,7 +219,7 @@ export function useLiveEvents(
     () => void catchUp(),
   )
 
-  // Coming back to (or switching to) a list cached while live: it missed what arrived meanwhile.
+  // A cached list missed what arrived while other filters were shown.
   const lastKeyRef = useRef(keyString)
   useEffect(() => {
     if (lastKeyRef.current === keyString) return
@@ -245,7 +227,6 @@ export function useLiveEvents(
     if (enabled) void handlers.current.catchUp()
   }, [keyString, enabled])
 
-  // Merge held events once the list's request has settled.
   const fetching = useIsFetching({ queryKey: listKey, exact: true })
   useEffect(() => {
     if (fetching === 0) handlers.current.flushHeld()
@@ -269,7 +250,6 @@ export function useLiveEvents(
     // A request in flight would overwrite the merge with the pages it started from.
     await cancel()
     if (viewRef.current !== view) return false
-    // Read after the awaits: events keep arriving meanwhile.
     const waitingNow = waitingRef.current.view === view ? waitingRef.current.events : []
     const held = heldRef.current.view === view ? heldRef.current.events : []
     const base = head ? { pages: [head], pageParams: [null] } : undefined
@@ -279,7 +259,7 @@ export function useLiveEvents(
     heldRef.current = { view, events: [] }
     updateWaiting({ view, events: [], overflow: false })
     setFailedView(null)
-    // Events that arrived during the reload were dropped with the overflow: fetch them again.
+    // Events dropped with the overflow during the reload: fetch them again.
     if (head) void handlers.current.catchUp()
     return true
   }, [queryClient, view, filters, updateWaiting])

@@ -1,19 +1,15 @@
-// Agent avatars: initials on a tint picked by a stable hash of the name (docs/DESIGN.md).
-// The same agent always gets the same colour, in every session and for every viewer.
-
 /** "billing-assistant" → "BA", "devops" → "DE", "" → "?". Splits on - _ . and spaces. */
 export function agentInitials(name: string): string {
   const parts = name.split(/[-_.\s]+/).filter((part) => part.length > 0)
   const first = parts[0]
   if (first === undefined) return '?'
   const second = parts[1]
-  // One-word names use their first two letters so every avatar has two characters.
   const initials =
     second === undefined ? first.slice(0, 2) : `${first.charAt(0)}${second.charAt(0)}`
   return initials.toUpperCase()
 }
 
-/** Stable index 0..7 into AVATAR_CLASSES. Same hash as the design canvas, so colours match it. */
+/** Same hash as the design canvas, so colours match it. */
 export function agentAvatarIndex(name: string): number {
   let hash = 0
   for (let i = 0; i < name.length; i++) {
@@ -22,10 +18,7 @@ export function agentAvatarIndex(name: string): number {
   return hash % AVATAR_CLASSES.length
 }
 
-/**
- * Full class strings, written out so Tailwind's source scan finds them.
- * Never build these dynamically (`bg-avatar-${i}`): the class would not be generated.
- */
+/** Written out in full: Tailwind wouldn't generate `bg-avatar-${i}`. */
 export const AVATAR_CLASSES = [
   'bg-avatar-1-bg text-avatar-1',
   'bg-avatar-2-bg text-avatar-2',
@@ -37,7 +30,6 @@ export const AVATAR_CLASSES = [
   'bg-avatar-8-bg text-avatar-8',
 ] as const
 
-/** Tint + text classes for an agent's avatar. */
 export function agentAvatarClass(name: string): string {
   return AVATAR_CLASSES[agentAvatarIndex(name)] ?? AVATAR_CLASSES[0]
 }

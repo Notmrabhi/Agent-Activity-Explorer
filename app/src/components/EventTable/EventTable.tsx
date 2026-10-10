@@ -43,7 +43,7 @@ export interface EventTableProps {
   isFetchingNextPage: boolean
   isFetchNextPageError: boolean
   nextPageError: unknown
-  /** Fetch the next page. Called automatically near the end, and by the Retry button. */
+  /** Called near the end of the list and by the Retry button. */
   onLoadMore: () => void
   /** `replace` is true when the keyboard moves the selection while the panel is already open. */
   onOpen: (id: string, options: { replace: boolean }) => void
@@ -52,8 +52,7 @@ export interface EventTableProps {
   ref?: Ref<EventTableHandle>
 }
 
-// Varied bar widths so the placeholder reads as "rows of data", not a striped block.
-// Full static class names (Tailwind scans source text). [agent, tool, args]
+// Full class names: Tailwind only finds classes written out in the source. [agent, tool, args]
 const SKELETON_WIDTHS = [
   ['w-24', 'w-28', 'w-3/4'],
   ['w-32', 'w-20', 'w-1/2'],
@@ -78,20 +77,8 @@ function errorDetail(error: unknown): string | null {
 }
 
 /**
- * The event list: a hand-built virtualised ARIA grid.
- *
- * Layout: the header row sits outside the scroll container so it never scrolls. Inside the
- * scroll container a spacer as tall as every *loaded* row gives the scrollbar its real size,
- * and only the rows in the window `useVirtualRows` computes (~viewport + 2 × overscan, about
- * 40 rows) exist in the DOM, each absolutely positioned at `index × ROW_HEIGHT`.
- * Rows are keyed by event id and memoised, so scrolling only renders the rows that enter.
- *
- * Keyboard: roving tabindex (one Tab stop). Arrow keys / J K, Home End, PageUp PageDown move,
- * Enter / Space open. The active row is always rendered, even when scrolled out of the window,
- * so the focused element is never unmounted (which would drop focus to <body>).
- *
- * Infinite loading: when the window gets within LOAD_MORE_THRESHOLD rows of the end, fetch the
- * next page. After a failure we never retry on our own; the footer offers Retry.
+ * Hand-built virtualised ARIA grid: only the visible rows (plus overscan) are in the DOM.
+ * Roving tabindex; the active row stays mounted even when scrolled away, so focus is never lost.
  */
 export function EventTable({
   rows,
@@ -114,30 +101,26 @@ export function EventTable({
     scrollRef,
   })
 
-  // The roving-focus target. Stored unclamped; clamped on read because the list can shrink
-  // (new filters) between the update and the render.
+  // Clamped on read: the list can shrink between the update and the render.
   const [activeIndex, setActiveIndex] = useState(0)
   const active = rows.length === 0 ? -1 : Math.min(activeIndex, rows.length - 1)
 
-  // Latest props for the stable callbacks handed to memoised rows. Updated in a layout effect
-  // so they are current before any event handler can run.
+  // Latest props for the stable callbacks passed to memoised rows.
   const latest = useRef({ rows, selectedId, onOpen, onLoadMore })
   useLayoutEffect(() => {
     latest.current = { rows, selectedId, onOpen, onLoadMore }
   })
 
-  // --- Focus after render -------------------------------------------------------------------
-  // A keyboard move may target a row that is not mounted yet (PageDown, End). We record the
-  // index and focus it in a layout effect, after React has rendered it. The counter makes sure
-  // a commit (and so the effect) happens even when activeIndex itself does not change.
+  // PageDown/End can target a row that isn't mounted yet: focus it after the render.
   const pendingFocusRef = useRef<number | null>(null)
   const [focusRequest, setFocusRequest] = useState(0)
   useLayoutEffect(() => {
     const index = pendingFocusRef.current
     if (index === null) return
     pendingFocusRef.current = null
-    // preventScroll: scrollToIndex already did a minimal "nearest" scroll.
-    scrollRef.current?.querySelector<HTMLElement>(`[data-index="${index}"]`)?.focus({ preventScroll: true })
+    scrollRef.current
+      ?.querySelector<HTMLElement>(`[data-index="${index}"]`)
+      ?.focus({ preventScroll: true })
   }, [focusRequest])
 
   const moveFocusTo = useCallback(
@@ -150,75 +133,61 @@ export function EventTable({
     [scrollToIndex],
   )
 
-  // --- Opening events from the grid ---------------------------------------------------------
-  // Ids the grid has asked to open that have not come back as `selectedId` yet. The router
-  // applies navigations in a transition, so `selectedId` can lag a render or two behind a fast
-  // J/K burst. Without this list the "follow the selection" effect below would treat that lagging
-  // echo of our own request as an outside change and snap the active row back.
+  // Ids we opened that haven't come back as `selectedId` yet (router navigations lag behind a
+  // fast J/K burst). Without this the follow effect below would snap the active row back.
   const ownOpensRef = useRef<string[]>([])
   const requestOpen = useCallback((id: string, replace: boolean) => {
-    // Re-opening the open event produces no selectedId change, so there is nothing to wait for.
     if (id !== latest.current.selectedId) ownOpensRef.current.push(id)
     latest.current.onOpen(id, { replace })
   }, [])
 
-  // --- Stable row callbacks (identity never changes, so memoised rows never re-render for them)
   const handleActivate = useCallback((index: number) => setActiveIndex(index), [])
   const handleOpenRow = useCallback(
     (index: number) => {
       const { rows: current, selectedId: openId } = latest.current
       const row = current[index]
-      // Re-opening the event that is already open must not push a duplicate history entry.
       if (row) requestOpen(row.id, row.id === openId)
     },
     [requestOpen],
   )
 
-  // --- Filters changed: back to the top ------------------------------------------------------
-  // The active row is reset during render (React's "adjust state when a prop changes"
-  // pattern), so no frame is rendered with the old index; the scroll is a DOM side effect.
+  // Filters changed: reset the active row during render, scroll back to the top below.
   const [renderedResetKey, setRenderedResetKey] = useState(resetKey)
   if (renderedResetKey !== resetKey) {
     setRenderedResetKey(resetKey)
     setActiveIndex(0)
   }
-  // The last selectedId the grid has reacted to (see the next effect).
   const followedIdRef = useRef<string | null>(null)
-  // Runs before the selection sync below (layout effects run in declaration order).
+  // Must run before the selection sync below (layout effects run in order).
   const resetKeyRef = useRef(resetKey)
   useLayoutEffect(() => {
     if (resetKeyRef.current === resetKey) return
     resetKeyRef.current = resetKey
-    // scrollToIndex(0) also commits the new window immediately (no blank frame).
     scrollToIndex(0)
-    // Keep an open panel where it is: don't yank the new list to the open event.
+    // Don't jump the new list to the open event.
     followedIdRef.current = selectedId
   }, [resetKey, selectedId, scrollToIndex])
 
-  // --- Rows added above (live mode) ----------------------------------------------------------
-  // Rows added above: keep the reader's place; a reader idle at the top stays on the newest row.
+  // Live rows added above: keep the reader's place; a reader idle at the top stays on the newest row.
   const previousRef = useRef({ firstId: rows[0]?.id, length: rows.length, resetKey, isStale })
   useLayoutEffect(() => {
     const previous = previousRef.current
     previousRef.current = { firstId: rows[0]?.id, length: rows.length, resetKey, isStale }
-    // New filters, or the placeholder rows being swapped for the real ones, give a different
-    // list, not new rows on top.
+    // New filters or placeholder rows: a different list, not rows added on top.
     if (previous.resetKey !== resetKey || previous.isStale || isStale) return
     if (previous.firstId === undefined || rows[0]?.id === previous.firstId) return
     const added = rows.findIndex((row) => row.id === previous.firstId)
     if (added <= 0 || rows.length - previous.length < added) return
     const scrolled = (scrollRef.current?.scrollTop ?? 0) > 0
-    const picked = scrollRef.current?.contains(document.activeElement) === true || selectedId !== null
+    const picked =
+      scrollRef.current?.contains(document.activeElement) === true || selectedId !== null
     // oxlint-disable-next-line react/set-state-in-effect
     if (scrolled || picked) setActiveIndex((index) => index + added)
     if (scrolled) scrollBy(added * ROW_HEIGHT)
   }, [rows, resetKey, isStale, selectedId, scrollBy])
 
-  // --- Follow the selection when it changes from outside -------------------------------------
-  // Panel prev/next buttons, back/forward and a cold load of a shared link change selectedId
-  // without going through the grid. Point the active row at it and bring it into view, once per
-  // change: after that the user may scroll away freely. Waits while rows are stale (old
-  // filters) or while the event is not loaded yet (it re-checks as pages arrive).
+  // Selection changed from outside (panel prev/next, back/forward, shared link): bring it into
+  // view once, then let the user scroll freely.
   useLayoutEffect(() => {
     if (selectedId === followedIdRef.current) return
     if (selectedId === null) {
@@ -228,8 +197,6 @@ export function EventTable({
     }
     const ownPosition = ownOpensRef.current.indexOf(selectedId)
     if (ownPosition !== -1) {
-      // Our own request caught up (possibly skipping intermediate ones): the active row is
-      // already where the user put it.
       ownOpensRef.current.splice(0, ownPosition + 1)
       followedIdRef.current = selectedId
       return
@@ -241,28 +208,30 @@ export function EventTable({
     ownOpensRef.current = []
     scrollToIndex(index)
     if (index === active) return
-    // This effect has to touch the DOM (scroll, read document.activeElement), so it cannot be
-    // derived during render. As a layout effect, the extra render lands before paint.
     // oxlint-disable-next-line react/set-state-in-effect
     setActiveIndex(index)
-    // If focus is inside the list (e.g. the user pressed Alt+Left on a row), follow it so it is
-    // not left on a row that is about to be unmounted.
+    // Move focus along so it isn't left on a row that is about to unmount.
     if (scrollRef.current?.contains(document.activeElement)) {
       pendingFocusRef.current = index
       setFocusRequest((n) => n + 1)
     }
   }, [selectedId, rows, isStale, active, scrollToIndex])
 
-  // --- Infinite loading -----------------------------------------------------------------------
-  // onLoadMore comes from `latest`, not the deps: a new function identity from the parent must
-  // not re-run this effect (TanStack's fetchNextPage would start a second request).
+  // onLoadMore is read from `latest`: a new identity must not re-run this and fetch twice.
   useEffect(() => {
     if (isInitialLoading || isStale) return
     if (!hasNextPage || isFetchingNextPage || isFetchNextPageError) return
     if (shouldLoadMore(end, rows.length)) latest.current.onLoadMore()
-  }, [end, rows.length, hasNextPage, isFetchingNextPage, isFetchNextPageError, isInitialLoading, isStale])
+  }, [
+    end,
+    rows.length,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    isInitialLoading,
+    isStale,
+  ])
 
-  // --- Imperative API for the page (return focus after closing the panel, shortcuts) ---------
   useImperativeHandle(
     ref,
     () => ({
@@ -282,10 +251,9 @@ export function EventTable({
     [rows, active, moveFocusTo],
   )
 
-  // --- Keyboard ------------------------------------------------------------------------------
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.ctrlKey || event.metaKey || event.altKey) return
-    // Only keys pressed on a row: Enter on the footer's Retry button must stay a button press.
+    // Rows only: Enter on the footer's Retry button must stay a button press.
     const target = event.target
     if (!(target instanceof HTMLElement) || target.dataset.index === undefined) return
     if (active < 0) return
@@ -324,8 +292,7 @@ export function EventTable({
       default:
         return
     }
-    // Handled: keep the browser from also scrolling the container / page, and keep page-level
-    // J/K shortcuts from moving a second time.
+    // Stop the browser scrolling and the page-level J/K shortcut moving again.
     event.preventDefault()
     event.stopPropagation()
 
@@ -333,14 +300,11 @@ export function EventTable({
     if (next === active) return
     moveFocusTo(next)
     const row = rows[next]
-    // With the panel open, the panel follows the keyboard. replace: stepping through 50 events
-    // should not leave 50 history entries.
+    // The open panel follows the keyboard, replacing history instead of adding entries.
     if (row && selectedId !== null) requestOpen(row.id, true)
   }
 
-  // --- Which rows to render ------------------------------------------------------------------
-  // The window [start, end) plus the active row if it has scrolled out of it, kept in index
-  // order so the reading order stays sensible for screen readers.
+  // The visible window plus the active row if it scrolled out, in index order.
   const indices: number[] = []
   if (active >= 0 && active < start) indices.push(active)
   for (let i = start; i < end; i++) indices.push(i)
@@ -358,15 +322,18 @@ export function EventTable({
       onKeyDown={handleKeyDown}
       className="@container flex min-h-0 flex-1 flex-col overflow-hidden rounded-t-lg border border-border bg-surface"
     >
-      {/* scrollbar-gutter on both the header and the scroll container reserves the same space
-          for the scrollbar, so 1fr columns line up even with classic (non-overlay) scrollbars. */}
+      {/* Same scrollbar-gutter as the body, so columns line up with classic scrollbars. */}
       <div
         role="row"
         aria-rowindex={1}
         className={`${ROW_GRID} h-9 shrink-0 overflow-hidden border-b border-border bg-sunken text-xs font-medium tracking-wide text-muted uppercase [scrollbar-gutter:stable]`}
       >
         {COLUMNS.map((column) => (
-          <div key={column.label} role="columnheader" className={`truncate ${column.className ?? ''}`}>
+          <div
+            key={column.label}
+            role="columnheader"
+            className={`truncate ${column.className ?? ''}`}
+          >
             {column.label}
           </div>
         ))}
@@ -374,13 +341,15 @@ export function EventTable({
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         {isStale && (
-          // Indeterminate progress: a sweeping accent gradient; a solid bar under reduced motion.
-          <div aria-hidden="true" className="absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-accent-soft">
+          <div
+            aria-hidden="true"
+            className="absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-accent-soft"
+          >
             <div className="h-full bg-accent motion-safe:animate-shimmer motion-safe:bg-transparent motion-safe:bg-linear-to-r motion-safe:bg-size-[200%_100%] motion-safe:from-transparent motion-safe:via-accent motion-safe:to-transparent" />
           </div>
         )}
 
-        {/* overflow-anchor: none, because prepended rows are anchored by hand (see above). */}
+        {/* Rows added above are anchored by hand, so the browser must not anchor too. */}
         <div
           ref={scrollRef}
           className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable]"
@@ -392,7 +361,11 @@ export function EventTable({
                   Loading events
                 </span>
                 {SKELETON_WIDTHS.map(([agentWidth, toolWidth, argsWidth], i) => (
-                  <div key={i} aria-hidden="true" className={`${ROW_GRID} h-(--row-height) border-b border-border`}>
+                  <div
+                    key={i}
+                    aria-hidden="true"
+                    className={`${ROW_GRID} h-(--row-height) border-b border-border`}
+                  >
                     <Skeleton className="h-2.5 w-36" />
                     <div className="flex min-w-0 items-center gap-2">
                       <Skeleton className="size-[22px] shrink-0 rounded-full" />
@@ -435,7 +408,10 @@ export function EventTable({
           {showFooter && (
             // A row so the grid only contains rows (the Retry button must live in a cell).
             <div role="row">
-              <div role="gridcell" className="flex h-12 items-center justify-center gap-2 px-4 text-sm text-muted">
+              <div
+                role="gridcell"
+                className="flex h-12 items-center justify-center gap-2 px-4 text-sm text-muted"
+              >
                 {isFetchingNextPage ? (
                   <>
                     <Spinner />
@@ -449,7 +425,6 @@ export function EventTable({
                         <span className="truncate font-mono text-xs text-subtle">{detail}</span>
                       )}
                     </span>
-                    {/* Loaded rows stay; nothing retries on its own. */}
                     <Button size="sm" onClick={onLoadMore} className="ml-1">
                       Retry
                     </Button>
@@ -458,7 +433,8 @@ export function EventTable({
                   <>
                     <CheckIcon size={14} strokeWidth={2.4} />
                     <span>
-                      End of results · all <span className="font-mono text-fg">{formatCount(rows.length)}</span> events
+                      End of results · all{' '}
+                      <span className="font-mono text-fg">{formatCount(rows.length)}</span> events
                       loaded
                     </span>
                   </>

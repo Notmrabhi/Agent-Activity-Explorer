@@ -19,11 +19,8 @@ import { Popover } from '../ui/Popover'
 import { FilterButton } from './FilterButton'
 
 export interface TimeRangeFilterProps {
-  /** Inclusive start from the URL (ISO UTC), or null. */
   from: string | null
-  /** Exclusive end from the URL (ISO UTC), or null. */
   to: string | null
-  /** Called with absolute ISO UTC bounds; either may be null. */
   onChange: (range: TimeRange) => void
 }
 
@@ -33,10 +30,7 @@ const INPUT =
 const OPTION =
   'flex h-9 w-full items-center gap-2.5 rounded-md px-2 text-left text-base enabled:hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50'
 
-/**
- * A datetime-local input that holds a half-typed value ("10/09/2026 --:--") reports value ''.
- * Pass a non-date marker instead, so validation says "invalid" rather than treating it as empty.
- */
+/** A half-typed datetime-local reports '', which would look empty instead of invalid. */
 function readInput(input: HTMLInputElement | null, text: string): string {
   return input?.validity.badInput ? 'incomplete' : text
 }
@@ -50,15 +44,6 @@ function FieldError({ id, children }: { id: string; children: ReactNode }) {
   )
 }
 
-/**
- * Time-range filter (container: it loads the "newest event" anchor itself).
- *
- * - Quick ranges count back from the newest event, not the wall clock (the data is historical),
- *   and are stored as absolute timestamps so a shared link never drifts (see lib/urlState).
- * - The custom range is a real <form>: Enter submits, errors are inline next to their field and
- *   only shown after a submit, then re-checked as the user fixes them.
- * - If the anchor can't load, the presets say so with a Retry; the custom range still works.
- */
 export function TimeRangeFilter({ from, to, onChange }: TimeRangeFilterProps) {
   const newest = useNewestEventTime()
   const [open, setOpen] = useState(false)
@@ -82,8 +67,6 @@ export function TimeRangeFilter({ from, to, onChange }: TimeRangeFilterProps) {
   const label = describeRange(from, to)
   const anchor = newest.data
 
-  // The form starts from the URL each time it opens, so a half-typed range that was abandoned
-  // never resurfaces as if it were applied.
   const openPopover = () => {
     setFromText(toUtcInputValue(from))
     setToText(toUtcInputValue(to))
@@ -102,7 +85,6 @@ export function TimeRangeFilter({ from, to, onChange }: TimeRangeFilterProps) {
     closeAndReturnFocus()
   }
 
-  // After a failed submit, errors follow the user's edits so a fixed field clears at once.
   const revalidate = (nextFrom: string, nextTo: string) => {
     if (submitted) setErrors(validateRange(nextFrom, nextTo))
   }
@@ -123,13 +105,11 @@ export function TimeRangeFilter({ from, to, onChange }: TimeRangeFilterProps) {
     setErrors(nextErrors)
     setSubmitted(true)
     if (hasRangeErrors(nextErrors)) {
-      // A start-after-end error is reported on the pair; From is the first field of the pair.
       if (nextErrors.from !== undefined || nextErrors.form !== undefined) fromRef.current?.focus()
       else toRef.current?.focus()
       return
     }
-    // The inputs are minute-precision. A field the user left untouched keeps its exact URL value
-    // (a hand-edited link may carry seconds), so "Apply" without edits changes nothing.
+    // An untouched field keeps its exact URL value (it may carry seconds the input can't show).
     const resolve = (input: string, current: string | null) =>
       input === toUtcInputValue(current) ? current : fromUtcInputValue(input)
     apply({ from: resolve(fromInput, from), to: resolve(toInput, to) })
@@ -168,20 +148,22 @@ export function TimeRangeFilter({ from, to, onChange }: TimeRangeFilterProps) {
       </p>
     )
   } else if (anchor === null) {
-    anchorStatus = <p className="px-2 pt-1 pb-1.5 text-xs text-muted">No events yet to count back from.</p>
+    anchorStatus = (
+      <p className="px-2 pt-1 pb-1.5 text-xs text-muted">No events yet to count back from.</p>
+    )
   } else {
     anchorStatus = (
       <p className="px-2 pt-1 pb-1.5 text-xs text-muted">
-        Counted back from the newest event (<span className="font-mono">{formatAnchor(anchor)}</span>{' '}
-        UTC)
+        Counted back from the newest event (
+        <span className="font-mono">{formatAnchor(anchor)}</span> UTC)
       </p>
     )
   }
 
-  // aria-describedby per input: its own error, plus the pair error when start >= end.
   const describedBy = (fieldErrorId: string, fieldError: string | undefined) =>
-    [fieldError ? fieldErrorId : null, errors.form ? formErrorId : null].filter(Boolean).join(' ') ||
-    undefined
+    [fieldError ? fieldErrorId : null, errors.form ? formErrorId : null]
+      .filter(Boolean)
+      .join(' ') || undefined
 
   return (
     <div className="relative">
@@ -189,8 +171,7 @@ export function TimeRangeFilter({ from, to, onChange }: TimeRangeFilterProps) {
         ref={anchorRef}
         label="Time"
         valueLabel={label || undefined}
-        // "→" reads as "right arrow" and the zone is implicit on screen: give screen readers words.
-        // The name still starts with the visible "Time" for voice control.
+        // "→" reads as "right arrow": give screen readers words.
         aria-label={active ? `Time: ${label.replace(' → ', ' to ')} UTC` : undefined}
         open={open}
         aria-controls={popoverId}
@@ -202,8 +183,6 @@ export function TimeRangeFilter({ from, to, onChange }: TimeRangeFilterProps) {
         anchorRef={anchorRef}
         label="Filter by time"
         id={popoverId}
-        // End-aligned: this is the right-most filter, and a start-aligned 320px popover would run
-        // off the right edge of a tablet-width toolbar.
         align="end"
         className="w-80"
       >
@@ -256,7 +235,9 @@ export function TimeRangeFilter({ from, to, onChange }: TimeRangeFilterProps) {
                     step={60}
                     value={fromText}
                     onChange={handleFromChange}
-                    aria-invalid={errors.from !== undefined || errors.form !== undefined || undefined}
+                    aria-invalid={
+                      errors.from !== undefined || errors.form !== undefined || undefined
+                    }
                     aria-describedby={describedBy(fromErrorId, errors.from)}
                     className={INPUT}
                   />

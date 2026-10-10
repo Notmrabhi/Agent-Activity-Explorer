@@ -14,32 +14,24 @@ import { CloseIcon, SearchIcon } from '../ui/icons'
 import { Kbd } from '../ui/Kbd'
 
 export interface SearchInputProps {
-  /** The committed search (URL `q`). Changes from outside (Back, Clear filters) are adopted. */
+  /** The committed search (URL `q`). */
   value: string
   /** Write the search to the URL. `replace` is true for later commits of the same typing burst. */
   onCommit: (q: string, options: { replace: boolean }) => void
-  /** Forwarded to the <input>, so the page can focus it on "/". */
   ref?: Ref<HTMLInputElement>
   className?: string
 }
 
-/** Pause after the last keystroke before the search hits the URL (and the API). */
 const COMMIT_DELAY_MS = 300
 /** A typing burst ends this long after its last commit. */
 const BURST_END_MS = 1000
 
-// The URL drops a blank q, so "   " and "" are the same committed value. Comparing normalised
-// values keeps a blank commit from looking like an "external" change that wipes the box.
+// The URL drops a blank q, so "   " and "" must compare equal.
 const normalize = (q: string) => (q.trim() === '' ? '' : q)
 
 /**
- * Search box. The text is local state so typing is instant (the one allowed exception to "the
- * URL is the source of truth"); it is committed to the URL after a 300 ms pause.
- *
- * History: the first commit of a typing burst pushes an entry and later commits in the same
- * burst replace it. So typing "stripe" leaves one Back step (to the previous search), not six,
- * while two separate searches a few seconds apart are still two Back steps. A burst ends 1 s
- * after the last commit, on blur, or when the box is cleared.
+ * Local text (the one exception to the URL rule), committed after 300 ms. A typing burst makes one
+ * history entry, so typing "stripe" is one Back step, not six.
  */
 export function SearchInput({ value, onCommit, ref, className }: SearchInputProps) {
   const inputId = useId()
@@ -47,7 +39,7 @@ export function SearchInput({ value, onCommit, ref, className }: SearchInputProp
   const [text, setText] = useState(value)
   const [focused, setFocused] = useState(false)
 
-  /** What this component last wrote to the URL; tells our own echoes apart from outside changes. */
+  /** Tells our own URL echoes apart from outside changes. */
   const lastCommitted = useRef(normalize(value))
   const inBurst = useRef(false)
   const burstTimer = useRef<number | undefined>(undefined)
@@ -62,7 +54,6 @@ export function SearchInput({ value, onCommit, ref, className }: SearchInputProp
 
   const commit = (q: string) => {
     const next = normalize(q)
-    // Typing "a" then deleting it must not add a history entry for an unchanged URL.
     if (next === lastCommitted.current) return
     lastCommitted.current = next
     onCommit(next, { replace: inBurst.current })
@@ -73,8 +64,7 @@ export function SearchInput({ value, onCommit, ref, className }: SearchInputProp
 
   const debouncedCommit = useDebouncedCallback(commit, COMMIT_DELAY_MS)
 
-  // Adopt outside changes (Back/Forward, Clear filters, a pasted link) but never clobber typing:
-  // our own commits come back through `value` too, and those match lastCommitted.
+  // Adopt outside changes (Back, Clear filters) without clobbering our own typing.
   useEffect(() => {
     const external = normalize(value)
     if (external === lastCommitted.current) return
@@ -84,7 +74,6 @@ export function SearchInput({ value, onCommit, ref, className }: SearchInputProp
     setText(value)
   }, [value, debouncedCommit, endBurst])
 
-  // React 19 ref-as-prop: keep our own handle (for focus after clearing) and forward the node.
   const setInputRef = useCallback(
     (node: HTMLInputElement | null) => {
       inputRef.current = node
@@ -103,7 +92,6 @@ export function SearchInput({ value, onCommit, ref, className }: SearchInputProp
     [ref],
   )
 
-  /** Clearing is a deliberate step, so it gets its own history entry, pushed right away. */
   const clear = () => {
     setText('')
     debouncedCommit.cancel()
@@ -122,8 +110,7 @@ export function SearchInput({ value, onCommit, ref, className }: SearchInputProp
       debouncedCommit.flush()
     } else if (event.key === 'Escape') {
       if (text !== '') {
-        // Esc clears first. Stop it here so the page's Esc doesn't also close the detail panel,
-        // and prevent the browser's own clear-on-Esc for type="search".
+        // Stop Esc so it doesn't also close the panel.
         event.preventDefault()
         event.stopPropagation()
         clear()
@@ -135,7 +122,6 @@ export function SearchInput({ value, onCommit, ref, className }: SearchInputProp
 
   const handleBlur = () => {
     setFocused(false)
-    // Leaving the box means the user is done: make the URL match what they see.
     debouncedCommit.flush()
     endBurst()
   }
@@ -164,7 +150,6 @@ export function SearchInput({ value, onCommit, ref, className }: SearchInputProp
         onKeyDown={handleKeyDown}
         onFocus={() => setFocused(true)}
         onBlur={handleBlur}
-        // The native cancel "×" is hidden: our clear button is styled, labelled and history-aware.
         className="h-(--control-height) w-full appearance-none rounded-md border border-control bg-surface pr-10 pl-9 text-base text-fg placeholder:text-subtle [&::-webkit-search-cancel-button]:appearance-none"
       />
       {text !== '' ? (
@@ -172,8 +157,7 @@ export function SearchInput({ value, onCommit, ref, className }: SearchInputProp
           label="Clear search"
           variant="ghost"
           size="sm"
-          // Keep focus in the input on mouse clicks: a blur would flush the half-typed text
-          // into its own history entry right before the clear.
+          // No blur: it would commit the half-typed text as its own history entry.
           onMouseDown={(event) => event.preventDefault()}
           onClick={handleClearClick}
           className="absolute top-1/2 right-0.5 -translate-y-1/2"
@@ -182,7 +166,6 @@ export function SearchInput({ value, onCommit, ref, className }: SearchInputProp
         </IconButton>
       ) : (
         !focused && (
-          // Decorative hint; aria-keyshortcuts on the input carries the same information.
           <span
             aria-hidden="true"
             className="pointer-events-none absolute top-1/2 right-2.5 flex -translate-y-1/2"

@@ -1,10 +1,7 @@
-// Pure helpers for the detail panel's JSON viewer (components/DetailPanel/JsonTree.tsx).
-// Everything here is cheap on purpose: `args` can be 850 KB, so walks stop early at a limit
-// instead of visiting (or stringifying) the whole value.
+// JSON viewer helpers. `args` can be 850 KB, so walks stop early at a limit.
 import { formatCount } from './format'
 
 export type JsonObject = { readonly [key: string]: unknown }
-/** An object or array: something the tree can open. */
 export type JsonContainer = readonly unknown[] | JsonObject
 
 /** Children rendered per batch; the rest sit behind "Show 100 more". */
@@ -19,10 +16,7 @@ export const EXPAND_ALL_NODE_LIMIT = 2_000
 /** Deepest level "Expand all" opens on a payload over the node limit. */
 export const LARGE_EXPAND_DEPTH = 3
 
-/**
- * Upper bound on tree rows we are willing to mount in one go. Chunking caps each level at 100,
- * but 3 levels of 100 is still a million rows, so depth is lowered until the estimate fits.
- */
+/** Max tree rows mounted at once (3 levels of 100 would already be a million). */
 export const ROW_BUDGET = 2_000
 
 export function isContainer(value: unknown): value is JsonContainer {
@@ -34,7 +28,6 @@ export function isJsonArray(value: JsonContainer): value is readonly unknown[] {
   return Array.isArray(value)
 }
 
-/** Number of direct children. */
 export function childCount(value: JsonContainer): number {
   return isJsonArray(value) ? value.length : Object.keys(value).length
 }
@@ -46,13 +39,11 @@ export function summarize(value: JsonContainer): string {
   return `{${formatCount(count)} ${count === 1 ? 'key' : 'keys'}}`
 }
 
-/** One child: its object key or array index, and its value. */
 export interface JsonEntry {
   key: string | number
   value: unknown
 }
 
-/** The first `end` children of a container, in order. */
 export function sliceEntries(value: JsonContainer, end: number): JsonEntry[] {
   if (isJsonArray(value)) {
     return value.slice(0, end).map((child, index) => ({ key: index, value: child }))
@@ -64,19 +55,13 @@ export function sliceEntries(value: JsonContainer, end: number): JsonEntry[] {
 
 const IDENTIFIER = /^[A-Za-z_$][\w$]*$/
 
-/**
- * How a key is shown: array indices and identifier-like keys bare (`path`, `3`), anything else
- * quoted and escaped like JSON (`"content-type"`, `""`, `"a\nb"`), so odd keys stay unambiguous.
- */
+/** Identifier-like keys bare, anything else quoted like JSON so odd keys stay unambiguous. */
 export function formatKey(key: string | number): string {
   if (typeof key === 'number' || IDENTIFIER.test(key)) return String(key)
   return JSON.stringify(key)
 }
 
-/**
- * The first `max` characters of a string, without splitting a surrogate pair (an emoji cut in
- * half would render as a replacement character).
- */
+/** First `max` characters, never splitting a surrogate pair (half an emoji renders as �). */
 export function truncateText(text: string, max: number): string {
   if (text.length <= max) return text
   const code = text.charCodeAt(max - 1)
@@ -88,21 +73,15 @@ export function truncateText(text: string, max: number): string {
 export function toPrettyJson(value: unknown): string | undefined {
   if (value === undefined) return undefined
   try {
-    // JSON.stringify returns undefined for functions/symbols; the API never sends those.
     return JSON.stringify(value, null, 2) ?? undefined
   } catch {
-    // Circular structures or BigInt. Cannot come from a JSON response, but never crash the panel.
     return String(value)
   }
 }
 
 /**
- * Cuts long text into consecutive blocks of at most `size` characters, for progressive
- * rendering (components/DetailPanel/ProgressiveText.tsx). A block ends at the last line break
- * inside it, and that break is dropped because each block renders as its own line, so pretty
- * JSON splits between lines. Only a single line longer than `size` (an 850 KB string value) is
- * cut mid-line, never inside a surrogate pair. One forward pass: the next line break is carried
- * between blocks instead of searched again.
+ * Blocks of at most `size` characters for progressive rendering. Splits at line breaks (dropped,
+ * as each block is its own line); only a longer single line is cut mid-line.
  */
 export function splitTextBlocks(text: string, size: number): string[] {
   const blocks: string[] = []
@@ -131,11 +110,7 @@ export function splitTextBlocks(text: string, size: number): string[] {
   return blocks
 }
 
-/**
- * Calls `visit` for each child of `value`, stopping as soon as it returns false.
- * `for…in` instead of Object.keys: no key array is allocated, so stopping early is really
- * cheap even for an object with 100k keys. JSON.parse output has no inherited enumerable keys.
- */
+/** Stops when `visit` returns false. for…in allocates no key array, so stopping early is cheap. */
 function forEachChild(value: JsonContainer, visit: (child: unknown) => boolean): void {
   if (isJsonArray(value)) {
     for (const child of value) if (!visit(child)) return
@@ -144,10 +119,7 @@ function forEachChild(value: JsonContainer, visit: (child: unknown) => boolean):
   for (const key in value) if (!visit(value[key])) return
 }
 
-/**
- * True when some direct child is a non-empty object or array, i.e. "Expand all" / "Collapse
- * all" would change anything. Stops at the first hit.
- */
+/** True when "Expand all" would change anything. */
 export function hasNestedContainers(value: JsonContainer): boolean {
   let found = false
   forEachChild(value, (child) => {
@@ -157,11 +129,7 @@ export function hasNestedContainers(value: JsonContainer): boolean {
   return found
 }
 
-/**
- * Counts every node (containers and primitives, the root excluded) with an iterative walk, so
- * deep payloads cannot overflow the stack. Stops once the count passes `limit` and returns
- * `limit + 1`: callers only need to know "small enough or not".
- */
+/** Iterative (no stack overflow on deep payloads); returns `limit + 1` once past the limit. */
 export function countNodes(value: unknown, limit: number): number {
   let count = 0
   const stack: unknown[] = [value]
@@ -177,11 +145,7 @@ export function countNodes(value: unknown, limit: number): number {
   return Math.min(count, limit + 1)
 }
 
-/**
- * How many rows the tree would mount if every container at level ≤ `openDepth` were open
- * (top-level children are level 1), with `chunk` children per container plus one
- * "Show more" row where there are more. Stops past `limit` and returns `limit + 1`.
- */
+/** Rows mounted with every container up to `openDepth` open; `limit + 1` once past the limit. */
 export function countVisibleRows(
   value: unknown,
   openDepth: number,
@@ -211,11 +175,7 @@ export function countVisibleRows(
   return Math.min(rows, limit + 1)
 }
 
-/**
- * Levels opened on first view. The brief asks for the top-level keys open (their children
- * visible); when that alone would mount more than ROW_BUDGET rows (an array of 1,000 wide
- * objects), stay at the top level so the panel opens instantly.
- */
+/** Top-level keys open on first view, unless that alone would exceed ROW_BUDGET. */
 export function defaultOpenDepth(value: unknown): number {
   return countVisibleRows(value, 1, CHUNK_SIZE, ROW_BUDGET) <= ROW_BUDGET ? 1 : 0
 }
@@ -227,10 +187,7 @@ export interface ExpandAllPlan {
   capped: boolean
 }
 
-/**
- * "Expand all": everything when the payload has at most EXPAND_ALL_NODE_LIMIT nodes; otherwise
- * LARGE_EXPAND_DEPTH levels, or fewer if even that would exceed ROW_BUDGET rows.
- */
+/** Everything for small payloads; otherwise LARGE_EXPAND_DEPTH levels, fewer if over ROW_BUDGET. */
 export function planExpandAll(value: unknown): ExpandAllPlan {
   if (countNodes(value, EXPAND_ALL_NODE_LIMIT) <= EXPAND_ALL_NODE_LIMIT) {
     return { depth: Infinity, capped: false }

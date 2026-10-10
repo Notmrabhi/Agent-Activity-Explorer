@@ -5,18 +5,12 @@ export interface NewEventsPillProps {
   count: number
   /** Too many waiting to merge: showing them reloads the first page. */
   needsRefresh: boolean
-  /** That reload is running. */
   refreshing: boolean
-  /** That reload failed; the events are still waiting. */
   failed: boolean
   onShow: () => void
 }
 
-/**
- * Sits in the column-header row while new events wait, so it never covers a data row. Nothing
- * in the list moves until the user clicks it. The live region is always mounted and announces
- * once when events start waiting, not per event.
- */
+/** In the header row, so it never covers a data row. Announces once, not per event. */
 export function NewEventsPill({
   count,
   needsRefresh,

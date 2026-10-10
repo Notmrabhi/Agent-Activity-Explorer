@@ -29,38 +29,26 @@ import { ChevronDownIcon } from '../ui/icons'
 import { ProgressiveText } from './ProgressiveText'
 
 export interface JsonTreeProps {
-  /** Any JSON value. Objects and arrays become a tree; a primitive is shown on its own. */
   value: unknown
-  /** What the value is, e.g. "Arguments". Names the tree and its scroll region. */
+  /** e.g. "Arguments": names the tree and its scroll region. */
   label: string
-  /**
-   * Containers at level ≤ openDepth start open (top-level keys are level 1). Only read on mount:
-   * the parent remounts the tree (new `key`) for "Expand all" / "Collapse all".
-   */
+  /** Read on mount only: Expand/Collapse all remount the tree with a new key. */
   openDepth: number
 }
 
 const TREEITEM = '[role="treeitem"]'
 const NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'Home', 'End'])
 
-// The treeitem <li> holds its whole subtree, so a ring on the <li> would frame every child.
-// The ring and the "you are here" tint go on its own row (direct child) instead.
+// The <li> contains its subtree, so the focus ring goes on its own row instead.
 const ITEM =
   'outline-none [&:focus>[data-row]]:bg-selected [&:focus-visible>[data-row]]:outline-2 [&:focus-visible>[data-row]]:-outline-offset-2 [&:focus-visible>[data-row]]:outline-accent'
 const ROW = 'flex items-start gap-1 rounded-sm px-1 py-0.5'
-// Chevron centre is at 12px (4px row padding + half of 16px), so the guide line sits under it.
 const GROUP = 'ml-3 border-l border-border pl-1.5'
 const SPACER = <span aria-hidden="true" className="size-4 shrink-0" />
 
-// SECURITY: every value below is rendered as a React text child, never via innerHTML, so a
-// payload like `<script>alert("xss")</script>` or `<img onerror=…>` is shown as inert text.
+// SECURITY: values render as React text, never innerHTML, so XSS payloads in args stay inert.
 
-/**
- * A string, number, boolean or null. Long strings are cut at 500 characters with a "show all"
- * link. The full string streams in a block per frame (ProgressiveText): as one text node, an
- * 850 KB string is a single 100-200 ms layout task.
- * The owning row keeps the "full" state, so Enter on the treeitem can toggle it too.
- */
+/** Long strings are cut; "show all" streams the rest per frame (one 850 KB text node = 100-200 ms layout). */
 function JsonPrimitive({
   value,
   full,
@@ -77,7 +65,6 @@ function JsonPrimitive({
     const shown = cut && !full ? truncateText(value, STRING_PREVIEW_CHARS) : value
     return (
       <>
-        {/* pre-wrap keeps the line breaks of logs and file contents readable. */}
         <span className="whitespace-pre-wrap text-fg">
           "{full && cut ? <ProgressiveText text={value} /> : shown}
           {cut && !full ? '…' : ''}"
@@ -87,8 +74,7 @@ function JsonPrimitive({
             {' '}
             <Button
               variant="link"
-              // Inside the tree the row is the keyboard target (Enter toggles), so the link is
-              // not an extra Tab stop; it stays a real button for pointer and touch screen readers.
+              // Not a Tab stop: Enter on the row toggles it.
               tabIndex={inTree ? -1 : undefined}
               aria-expanded={full}
               className="font-sans"
@@ -115,14 +101,9 @@ interface TreeNodeProps {
   posinset: number
   setsize: number
   openDepth: number
-  /** The tree's single Tab stop until focus moves (roving tabindex). */
   first: boolean
 }
 
-/**
- * One key/value. Memoised: when a parent reveals 100 more children, or a sibling toggles,
- * the rows already on screen do not re-render.
- */
 const TreeNode = memo(function TreeNode({
   name,
   value,
@@ -150,8 +131,7 @@ const TreeNode = memo(function TreeNode({
   const labelId = useId()
   const keyText = formatKey(name)
 
-  // Pointer toggles also move focus to this row, so keyboard use can continue from here and a
-  // focused descendant is never unmounted by a collapse (which would drop focus to <body>).
+  // Focus moves here so a collapse never unmounts the focused element.
   const toggleOpen = () => {
     setOpen((wasOpen) => !wasOpen)
     itemRef.current?.focus()
@@ -161,8 +141,7 @@ const TreeNode = memo(function TreeNode({
     itemRef.current?.focus()
   }
 
-  // WAI-ARIA tree pattern, per item. Up/Down/Home/End are handled once on the tree root.
-  // Key events bubble through ancestor items, so each item only handles its own.
+  // Keys bubble through ancestor items, so each item only handles its own.
   const handleKeyDown = (event: KeyboardEvent<HTMLLIElement>) => {
     if (event.target !== event.currentTarget) return
     if (event.altKey || event.ctrlKey || event.metaKey) return
@@ -204,7 +183,6 @@ const TreeNode = memo(function TreeNode({
       aria-posinset={posinset}
       aria-setsize={setsize}
       aria-expanded={expandable ? open : undefined}
-      // Name the item by its own row only; by default it would include the whole subtree.
       aria-labelledby={labelId}
       onKeyDown={handleKeyDown}
       className={ITEM}
@@ -236,7 +214,6 @@ const TreeNode = memo(function TreeNode({
           {info === null ? (
             <JsonPrimitive value={value} full={full} onToggleFull={toggleFull} inTree />
           ) : (
-            // Empty containers have nothing to open: show the literal, no toggle.
             <span className="text-muted">{info.count === 0 ? info.empty : info.summary}</span>
           )}
         </span>
@@ -261,10 +238,7 @@ interface TreeLevelProps extends ComponentPropsWithoutRef<'ul'> {
   role: 'tree' | 'group'
 }
 
-/**
- * The children of one container: the first 100, then a "Show 100 more" item. Children of a
- * collapsed node are never mounted, so a 1,536-item array costs nothing until it is opened.
- */
+/** 100 children at a time; a collapsed node mounts none. */
 function TreeLevel({ value, level, openDepth, ...listProps }: TreeLevelProps) {
   const total = useMemo(() => childCount(value), [value])
   const [visible, setVisible] = useState(CHUNK_SIZE)
@@ -273,8 +247,7 @@ function TreeLevel({ value, level, openDepth, ...listProps }: TreeLevelProps) {
   const listRef = useRef<HTMLUListElement>(null)
   const focusIndex = useRef<number | null>(null)
 
-  // After "Show more", focus the first revealed item: the button itself may be gone, and
-  // focus must not fall back to <body>. Layout effect, so it happens before paint.
+  // The button may be gone: focus the first revealed item, not <body>.
   useLayoutEffect(() => {
     const index = focusIndex.current
     if (index === null) return
@@ -314,8 +287,7 @@ function TreeLevel({ value, level, openDepth, ...listProps }: TreeLevelProps) {
         />
       ))}
       {remaining > 0 && (
-        // An item, not a nested button: everything inside a tree is reached with the arrow
-        // keys, and Enter/Space activate it like any other item.
+        // A tree item, not a button: everything in a tree is reached with the arrow keys.
         <li
           role="treeitem"
           tabIndex={-1}
@@ -337,19 +309,14 @@ function TreeLevel({ value, level, openDepth, ...listProps }: TreeLevelProps) {
   )
 }
 
-/**
- * Read-only JSON tree (WAI-ARIA tree pattern): one Tab stop, ↑/↓ move, → opens or enters,
- * ← closes or goes to the parent, Home/End, Enter/Space toggle. Rendering is lazy: closed
- * nodes have no DOM, big containers render 100 children at a time, long strings are cut.
- */
+/** WAI-ARIA tree with one Tab stop. Lazy: closed nodes have no DOM. */
 export function JsonTree({ value, label, openDepth }: JsonTreeProps) {
   const boxRef = useRef<HTMLDivElement>(null)
   const [scrollable, setScrollable] = useState(false)
   const [full, setFull] = useState(false)
   const isTree = isContainer(value) && childCount(value) > 0
 
-  // The box only joins the Tab order when it actually scrolls (e.g. an expanded 850 KB string
-  // taller than the box, which arrow keys between items cannot scroll through).
+  // Tabbable only when it scrolls: arrow keys can't scroll inside a long string.
   useEffect(() => {
     const box = boxRef.current
     if (box === null || typeof ResizeObserver === 'undefined') return
@@ -358,14 +325,11 @@ export function JsonTree({ value, label, openDepth }: JsonTreeProps) {
     }
     const observer = new ResizeObserver(check)
     observer.observe(box)
-    // The content grows when nodes open; the box itself stops at max-h-96.
     if (box.firstElementChild) observer.observe(box.firstElementChild)
     return () => observer.disconnect()
   }, [isTree])
 
-  // Roving tabindex, kept in the DOM rather than in state: moving focus then re-renders
-  // nothing, which matters with 2,000 rows mounted. Whatever item takes focus (arrow keys,
-  // click, "Show more") becomes the one Tab stop.
+  // Roving tabindex kept in the DOM, not state: no re-render of 2,000 rows per keypress.
   const handleFocus = (event: FocusEvent<HTMLUListElement>) => {
     const target = event.target
     if (!(target instanceof HTMLElement) || target.getAttribute('role') !== 'treeitem') return
@@ -377,8 +341,7 @@ export function JsonTree({ value, label, openDepth }: JsonTreeProps) {
     target.tabIndex = 0
   }
 
-  // Closed nodes are not in the DOM, so document order of the mounted items is exactly the
-  // visible order: no separate model of the tree is needed for ↑/↓/Home/End.
+  // Closed nodes aren't in the DOM, so DOM order is the visible order.
   const handleKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
     if (!NAV_KEYS.has(event.key) || event.altKey || event.ctrlKey || event.metaKey) return
     const target = event.target
@@ -426,7 +389,6 @@ export function JsonTree({ value, label, openDepth }: JsonTreeProps) {
   return (
     <div
       ref={boxRef}
-      // A focusable element needs a role and a name; only then is it a region.
       role={scrollable ? 'region' : undefined}
       aria-label={scrollable ? `${label} JSON` : undefined}
       tabIndex={scrollable ? 0 : undefined}

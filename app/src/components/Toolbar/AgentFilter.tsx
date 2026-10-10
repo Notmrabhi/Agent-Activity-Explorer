@@ -8,28 +8,19 @@ import { Popover } from '../ui/Popover'
 import { FilterButton } from './FilterButton'
 
 export interface AgentFilterProps {
-  /** Agent names currently in the URL. */
   selected: string[]
-  /** Called with the full new selection, sorted. Applies immediately. */
   onChange: (agents: string[]) => void
 }
 
 const sortedUnique = (names: Iterable<string>) =>
   [...new Set(names)].sort((a, b) => a.localeCompare(b))
 
-/**
- * Multi-select agent filter (container: it loads the agent list itself).
- *
- * - Agents selected in the URL but missing from the API list (stale or hand-edited link) are
- *   still listed, checked, so the user can undo them.
- * - If /agents fails, the popover says so with a Retry; search and status keep working.
- */
+/** Agents in the URL but unknown to the API are still listed, so the user can undo them. */
 export function AgentFilter({ selected, onChange }: AgentFilterProps) {
   const agents = useAgents()
   const [open, setOpen] = useState(false)
   const [find, setFind] = useState('')
-  // Selection when the popover opened. Unchecking an agent the API doesn't know must not make
-  // its row (and the focused checkbox) vanish mid-interaction.
+  // Snapshot on open, so unchecking an unknown agent doesn't make its row vanish.
   const [pinned, setPinned] = useState<string[]>([])
   const anchorRef = useRef<HTMLButtonElement>(null)
   const popoverId = useId()
@@ -62,8 +53,6 @@ export function AgentFilter({ selected, onChange }: AgentFilterProps) {
     )
   }
 
-  // aria-disabled, not disabled: a button that disables itself under the cursor would drop
-  // keyboard focus to <body>.
   const selectVisible = (event: MouseEvent<HTMLButtonElement>) => {
     if (event.currentTarget.getAttribute('aria-disabled') === 'true') return
     onChange(sortedUnique([...selected, ...visible]))

@@ -2,26 +2,16 @@ import type { ReactNode } from 'react'
 import { ChevronDownIcon } from '../ui/icons'
 
 export interface PanelSectionProps {
-  /** Section heading, e.g. "Policy matches". */
   title: string
-  /** Quiet text after the title, e.g. "· 2 rules fired". Part of the toggle's accessible name. */
   meta?: ReactNode
-  /** Buttons on the right of the title row, e.g. "Copy JSON". Shown while the section is open. */
   actions?: ReactNode
-  /** Default true. Only read on mount: afterwards the user owns the open state. */
+  /** Only read on mount. */
   defaultOpen?: boolean
   children: ReactNode
   className?: string
 }
 
-/**
- * Collapsible panel section (Jira's issue-view pattern) on native <details>/<summary>: keyboard
- * toggling, the expanded state and find-in-page auto-expansion come from the browser.
- *
- * `actions` are rendered next to the summary, not inside it: a button nested in <summary> would
- * be an interactive control inside another one (and clicking it would toggle the section).
- * They are positioned over the right end of the title row instead.
- */
+/** Native <details>. `actions` sit beside the <summary>, not in it: a button inside would toggle it. */
 export function PanelSection({
   title,
   meta,

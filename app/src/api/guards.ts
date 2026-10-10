@@ -1,7 +1,13 @@
 // Runtime guards for API responses. The API is a third-party service, so its JSON is `unknown`
 // until it has been checked here. Guards are deliberately shallow-but-sufficient: they check the
 // fields the UI relies on, not every nested value.
-import { EVENT_STATUSES, type EventDetail, type EventStatus, type EventSummary, type EventsPage } from './types'
+import {
+  EVENT_STATUSES,
+  type EventDetail,
+  type EventStatus,
+  type EventSummary,
+  type EventsPage,
+} from './types'
 
 type Json = Record<string, unknown>
 
