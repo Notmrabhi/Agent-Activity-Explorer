@@ -266,9 +266,6 @@ main {
   border-bottom: 1px solid var(--border);
   font-size: 14px;
   transition: background 0.15s;
-  /* Off-screen rows skip layout and paint. Rows are 42px: 21px content + 20px padding + 1px border. */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 21px;
 }
 
 .result-row.in-focus {
