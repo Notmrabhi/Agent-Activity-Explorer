@@ -38,7 +38,9 @@ window.WORKSPACES = ['acme-production', 'acme-staging', 'acme-finance-eu', 'acme
 window.CHANNELS = ['the web console', 'the Slack integration', 'a scheduled workflow', 'the public API', 'an IDE extension'];
 window.STATUSES =['ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'blocked', 'error'];
 
-window.ACTIVITY = (function buildActivity(count) {
+// Building 100k events takes ~1 s on a slow CPU, so it is not run here.
+// app.js calls it after the first paint (same seed, same data).
+window.buildActivity = function buildActivity(count) {
   let seed = 20261009;
   const random = () => {
     seed = (seed * 1664525 + 1013904223) % 4294967296;
@@ -62,4 +64,4 @@ window.ACTIVITY = (function buildActivity(count) {
     });
   }
   return events;
-})(100000);
+};

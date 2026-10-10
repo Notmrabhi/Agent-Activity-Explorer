@@ -190,6 +190,7 @@ function openTicker() {
   const list = panel.querySelector('.ticker-list');
 
   setInterval(() => {
+    if (!ready) return; // data is built just after the first paint
     const event = window.ACTIVITY[Math.floor(Math.random() * window.ACTIVITY.length)];
     list.prepend(tickerRow(event));
     while (list.children.length > tickerVisibleRows) {
@@ -214,7 +215,12 @@ function closeTicker() {
   tickerToggle.textContent = 'Show live calls';
 }
 
-searchInput.addEventListener('input', () => renderResults(searchInput.value));
+let ready = false;
+let pendingQuery = '';
+searchInput.addEventListener('input', () => {
+  if (ready) renderResults(searchInput.value);
+  else pendingQuery = searchInput.value;
+});
 window.addEventListener('scroll', onScroll);
 window.addEventListener('resize', equalizeCardHeights);
 window.addEventListener('resize', fitSummaries);
@@ -225,6 +231,13 @@ resultsList.addEventListener('touchstart', hidePreview);
 backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 tickerToggle.addEventListener('click', () => (tickerPanel ? closeTicker() : openTicker()));
 
-renderAgents();
-equalizeCardHeights();
-renderResults('');
+// Let the browser paint the page shell first: building the data and the first
+// render are slow, and they used to run before anything showed on screen.
+function start() {
+  window.ACTIVITY = window.buildActivity(100000);
+  renderAgents();
+  equalizeCardHeights();
+  renderResults(pendingQuery);
+  ready = true;
+}
+requestAnimationFrame(() => setTimeout(start, 0));
