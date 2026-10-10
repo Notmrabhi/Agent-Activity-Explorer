@@ -80,6 +80,7 @@ export function Toolbar({
         total={total}
         loadedCount={loadedCount}
         isLoading={isLoading}
+        resultKey={JSON.stringify(filters)}
         className="ml-auto"
       />
     </div>

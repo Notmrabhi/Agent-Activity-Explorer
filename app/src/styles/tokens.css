@@ -19,7 +19,7 @@
   --color-control: #848d9b; /* input/button outlines, 3.35:1 */
   --color-fg: #141821; /* 17.8:1 */
   --color-muted: #596372; /* 6.08:1 */
-  --color-subtle: #6a7383; /* 4.78:1 */
+  --color-subtle: #636c7c; /* 5.29:1, 4.98:1 on hover, 4.64:1 on selected */
   --color-accent: #2f5bea; /* 5.52:1, also white-on-accent */
   --color-accent-hover: #2448c7;
   --color-accent-text: #2448c7; /* links, JSON keys, 7.43:1 */
