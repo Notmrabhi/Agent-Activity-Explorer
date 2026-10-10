@@ -39,6 +39,23 @@
   --color-warning: #6b3e00; /* slow notice text, 8.57:1 */
   --color-warning-bg: #fff8e8;
   --color-warning-border: #c79a45;
+  /* Agent avatars: initials on a tint, 5.4–7.7:1. Picked by a stable hash of the agent name. */
+  --color-avatar-1-bg: #dce6fd; /* blue */
+  --color-avatar-1: #1f43b3;
+  --color-avatar-2-bg: #d3f0ec; /* teal */
+  --color-avatar-2: #0b6359;
+  --color-avatar-3-bg: #e9e1fb; /* violet */
+  --color-avatar-3: #5b34b0;
+  --color-avatar-4-bg: #faddea; /* pink */
+  --color-avatar-4: #a3215e;
+  --color-avatar-5-bg: #fde6d3; /* orange */
+  --color-avatar-5: #9a4410;
+  --color-avatar-6-bg: #ddf1df; /* green */
+  --color-avatar-6: #1f6b2a;
+  --color-avatar-7-bg: #e3e7ec; /* slate */
+  --color-avatar-7: #3b4656;
+  --color-avatar-8-bg: #d6eef7; /* cyan */
+  --color-avatar-8: #0b5c7a;
 
   --font-*: initial;
   --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -145,6 +162,22 @@
     --color-warning: #f2c67a;
     --color-warning-bg: rgb(242 181 80 / 0.1);
     --color-warning-border: rgb(242 181 80 / 0.45);
+    --color-avatar-1-bg: #1e2c55; /* blue */
+    --color-avatar-1: #a9bcff;
+    --color-avatar-2-bg: #123b37; /* teal */
+    --color-avatar-2: #7fdccb;
+    --color-avatar-3-bg: #2e2350; /* violet */
+    --color-avatar-3: #c7b3ff;
+    --color-avatar-4-bg: #45192f; /* pink */
+    --color-avatar-4: #f7a8cb;
+    --color-avatar-5-bg: #45270f; /* orange */
+    --color-avatar-5: #f8b98a;
+    --color-avatar-6-bg: #173a1e; /* green */
+    --color-avatar-6: #93db9e;
+    --color-avatar-7-bg: #262e39; /* slate */
+    --color-avatar-7: #c4ccd7;
+    --color-avatar-8-bg: #0f3442; /* cyan */
+    --color-avatar-8: #8ed3ec; /* 7.3–8.5:1 */
     --shadow-panel: -12px 0 32px rgb(0 0 0 / 0.45);
     --shadow-popover: 0 12px 32px rgb(0 0 0 / 0.55);
     --shadow-segment: 0 1px 2px rgb(0 0 0 / 0.5);
