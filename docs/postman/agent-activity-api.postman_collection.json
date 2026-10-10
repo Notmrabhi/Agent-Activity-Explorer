@@ -1,0 +1,1969 @@
+{
+  "info": {
+    "name": "Agent Activity Explorer — Mock API",
+    "description": "Requests for every endpoint of the take-home mock API (`npm run api` → http://localhost:4000).\n\n**The API fails on purpose:** roughly 5–10% of calls to any endpoint return `500 {\"error\":\"internal server error\"}`. If a request fails with 500, send it again. The app retries these automatically.\n\nRun the **Events** folder top to bottom: \"List events\" saves `nextCursor` and `eventId` as collection variables, which \"Next page\" and \"Get event\" then use.\n\nEvery request has a saved example response captured from the real server, plus tests (see the Tests tab / Test Results).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000",
+      "type": "string"
+    },
+    {
+      "key": "eventId",
+      "value": "evt_01M4G8GGWE6E27TYKTKJYNBBEV",
+      "type": "string"
+    },
+    {
+      "key": "nextCursor",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Agents",
+      "item": [
+        {
+          "name": "List agents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ],
+              "query": []
+            },
+            "description": "All agent names, for building the agent filter. Returns a plain JSON array of strings."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 500) console.warn('The mock API returns random 500s (~5-10%) on purpose. Send again.');",
+                  "pm.test('array of strings', () => { const a = pm.response.json(); pm.expect(a).to.be.an('array').that.is.not.empty; a.forEach((n) => pm.expect(n).to.be.a('string')); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/agents",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "agents"
+                  ],
+                  "query": []
+                },
+                "description": "All agent names, for building the agent filter. Returns a plain JSON array of strings."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "[\n  \"billing-assistant\",\n  \"code-reviewer\",\n  \"data-analyst\",\n  \"devops-runner\",\n  \"hr-onboarding\",\n  \"knowledge-bot\",\n  \"legal-summarizer\",\n  \"marketing-writer\",\n  \"meeting-scheduler\",\n  \"sales-researcher\",\n  \"security-triage\",\n  \"support-copilot\"\n]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Events",
+      "item": [
+        {
+          "name": "List events (first page)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Page size. Default 50, max 200 (higher values are silently capped).",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Newest first. Saves `nextCursor` and the first `eventId` into collection variables for the next requests."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 500) console.warn('The mock API returns random 500s (~5-10%) on purpose. Send again.');",
+                  "const body = pm.response.json();",
+                  "pm.test('page shape: items[], nextCursor, total', () => {",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "  pm.expect(body.total).to.be.a('number');",
+                  "});",
+                  "pm.test('every item has the documented fields', () => {",
+                  "  body.items.forEach((e) => {",
+                  "    pm.expect(e).to.include.keys('id', 'timestamp', 'agent', 'tool', 'status', 'latencyMs', 'argsPreview');",
+                  "    pm.expect(['ok', 'blocked', 'error']).to.include(e.status);",
+                  "  });",
+                  "});",
+                  "pm.test('sorted newest first', () => {",
+                  "  for (let i = 1; i < body.items.length; i++) {",
+                  "    pm.expect(Date.parse(body.items[i - 1].timestamp)).to.be.at.least(Date.parse(body.items[i].timestamp));",
+                  "  }",
+                  "});",
+                  "pm.collectionVariables.set('nextCursor', body.nextCursor || '');",
+                  "if (body.items[0]) pm.collectionVariables.set('eventId', body.items[0].id);",
+                  "console.log('Saved nextCursor and eventId for the next requests');"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events?limit=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "50",
+                      "description": "Page size. Default 50, max 200 (higher values are silently capped).",
+                      "disabled": false
+                    }
+                  ]
+                },
+                "description": "Newest first. Saves `nextCursor` and the first `eventId` into collection variables for the next requests."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"evt_01M4G9WJM2VP56FSKWRS27YBA7\",\n      \"timestamp\": \"2026-10-09T12:23:27.106Z\",\n      \"agent\": \"support-copilot\",\n      \"tool\": \"http.request\",\n      \"status\": \"error\",\n      \"latencyMs\": 30000,\n      \"argsPreview\": \"{\\\"headers\\\":{\\\"content-type\\\":\\\"application/json\\\"},\\\"method\\\":\\\"GET\\\",\\\"url\\\":\\\"https://graph.microsoft.com/api/v2/tickets.json\\\"}\"\n    },\n    {\n      \"id\": \"evt_01M4G9WHZRR9FAG9YDDDXDK1RF\",\n      \"timestamp\": \"2026-10-09T12:23:26.456Z\",\n      \"agent\": \"knowledge-bot\",\n      \"tool\": \"vector.search\",\n      \"status\": \"ok\",\n      \"latencyMs\": 88,\n      \"argsPreview\": \"{\\\"index\\\":\\\"product-docs\\\",\\\"query\\\":\\\"competitor pricing for enterprise tier\\\",\\\"topK\\\":5}\"\n    },\n    {\n      \"id\": \"evt_01M4G8HKS2PMPH71X9SBY2ASFR\",\n      \"timestamp\": \"2026-10-09T11:59:59.266Z\",\n      \"agent\": \"legal-summarizer\",\n      \"tool\": \"vector.search\",\n      \"status\": \"ok\",\n      \"latencyMs\": 102,\n      \"argsPreview\": \"{\\\"index\\\":\\\"sales-playbooks\\\",\\\"query\\\":\\\"how do I change my billing address\\\",\\\"topK\\\":5}\"\n    },\n    {\n      \"id\": \"evt_01M4G8HJKMKZJH4EHMRSKJZ8KM\",\n      \"timestamp\": \"2026-10-09T11:59:58.068Z\",\n      \"agent\": \"data-analyst\",\n      \"tool\": \"s3.get_object\",\n      \"status\": \"ok\",\n      \"latencyMs\": 135,\n      \"argsPreview\": \"{\\\"bucket\\\":\\\"acme-public-assets\\\",\\\"key\\\":\\\"exports/2026/part-0349.parquet\\\"}\"\n    },\n    {\n      \"id\": \"evt_01M4G8HGJ805FV937G9NJ1NHWK\",\n      \"timestamp\": \"2026-10-09T11:59:55.976Z\",\n      \"agent\": \"support-copilot\",\n      \"tool\": \"jira.create_issue\",\n      \"status\": \"ok\",\n      \"latencyMs\": 554,\n      \"argsPreview\": \"{\\\"description\\\":\\\"Reported by customer via chat. Steps: open billing, click download, nothing happens. Console shows 403.\\\"…\"\n    }\n  ],\n  \"nextCursor\": \"MTc5MTU0NzE5NTk3NnxldnRfMDFNNEc4SEdKODA1RlY5MzdHOU5KMU5IV0s\",\n  \"total\": 50002\n}"
+            }
+          ]
+        },
+        {
+          "name": "Next page (cursor)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?limit=50&cursor={{nextCursor}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "disabled": false
+                },
+                {
+                  "key": "cursor",
+                  "value": "{{nextCursor}}",
+                  "description": "Opaque cursor from the previous page (keyset: base64 of \"<timestampMs>|<id>\"). Run \"List events\" first.",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Follows `nextCursor`. The last page returns `nextCursor: null`. Pages never overlap."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 500) console.warn('The mock API returns random 500s (~5-10%) on purpose. Send again.');",
+                  "const body = pm.response.json();",
+                  "pm.test('page shape: items[], nextCursor, total', () => {",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "  pm.expect(body.total).to.be.a('number');",
+                  "});",
+                  "pm.test('every item has the documented fields', () => {",
+                  "  body.items.forEach((e) => {",
+                  "    pm.expect(e).to.include.keys('id', 'timestamp', 'agent', 'tool', 'status', 'latencyMs', 'argsPreview');",
+                  "    pm.expect(['ok', 'blocked', 'error']).to.include(e.status);",
+                  "  });",
+                  "});",
+                  "pm.test('sorted newest first', () => {",
+                  "  for (let i = 1; i < body.items.length; i++) {",
+                  "    pm.expect(Date.parse(body.items[i - 1].timestamp)).to.be.at.least(Date.parse(body.items[i].timestamp));",
+                  "  }",
+                  "});",
+                  "pm.collectionVariables.set('nextCursor', body.nextCursor || '');",
+                  "if (body.items[0]) pm.collectionVariables.set('eventId', body.items[0].id);",
+                  "console.log('Saved nextCursor and eventId for the next requests');"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events?limit=50&cursor={{nextCursor}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "50",
+                      "disabled": false
+                    },
+                    {
+                      "key": "cursor",
+                      "value": "{{nextCursor}}",
+                      "description": "Opaque cursor from the previous page (keyset: base64 of \"<timestampMs>|<id>\"). Run \"List events\" first.",
+                      "disabled": false
+                    }
+                  ]
+                },
+                "description": "Follows `nextCursor`. The last page returns `nextCursor: null`. Pages never overlap."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"evt_01M4G8HB9YYMGM6DY61GN8TRG5\",\n      \"timestamp\": \"2026-10-09T11:59:50.590Z\",\n      \"agent\": \"billing-assistant\",\n      \"tool\": \"sql.query\",\n      \"status\": \"ok\",\n      \"latencyMs\": 60,\n      \"argsPreview\": \"{\\\"database\\\":\\\"analytics\\\",\\\"query\\\":\\\"SELECT id, email, plan FROM customers WHERE created_at > now() - interval '7 days' LIMI…\"\n    },\n    {\n      \"id\": \"evt_01M4G8H9N3AQ1F6GNNDDJ93YDS\",\n      \"timestamp\": \"2026-10-09T11:59:48.899Z\",\n      \"agent\": \"data-analyst\",\n      \"tool\": \"s3.get_object\",\n      \"status\": \"ok\",\n      \"latencyMs\": 258,\n      \"argsPreview\": \"{\\\"bucket\\\":\\\"acme-analytics-exports\\\",\\\"key\\\":\\\"exports/2026/part-0028.parquet\\\"}\"\n    },\n    {\n      \"id\": \"evt_01M4G8H6G8M40ZQ97TTVMNBGN6\",\n      \"timestamp\": \"2026-10-09T11:59:45.672Z\",\n      \"agent\": \"security-triage\",\n      \"tool\": \"jira.create_issue\",\n      \"status\": \"ok\",\n      \"latencyMs\": 1034,\n      \"argsPreview\": \"{\\\"description\\\":\\\"Reported by customer via chat. Steps: open billing, click download, nothing happens. Console shows 403.\\\"…\"\n    },\n    {\n      \"id\": \"evt_01M4G8H3J19MTAYYVEF7H135SF\",\n      \"timestamp\": \"2026-10-09T11:59:42.657Z\",\n      \"agent\": \"meeting-scheduler\",\n      \"tool\": \"calendar.create_event\",\n      \"status\": \"ok\",\n      \"latencyMs\": 172,\n      \"argsPreview\": \"{\\\"attendees\\\":[\\\"yuki.0@acme.io\\\",\\\"jonas.1@acme.io\\\",\\\"omar.2@acme.io\\\"],\\\"durationMinutes\\\":30,\\\"title\\\":\\\"Q4 planning\\\"}\"\n    },\n    {\n      \"id\": \"evt_01M4G8GXKT1JK79MW059303EGF\",\n      \"timestamp\": \"2026-10-09T11:59:36.570Z\",\n      \"agent\": \"devops-runner\",\n      \"tool\": \"http.request\",\n      \"status\": \"ok\",\n      \"latencyMs\": 314,\n      \"argsPreview\": \"{\\\"headers\\\":{\\\"content-type\\\":\\\"application/json\\\"},\\\"method\\\":\\\"POST\\\",\\\"url\\\":\\\"https://acme.zendesk.com/v1/charges/ch_3PqL\\\"}\"\n    }\n  ],\n  \"nextCursor\": \"MTc5MTU0NzE3NjU3MHxldnRfMDFNNEc4R1hLVDFKSzc5TVcwNTkzMDNFR0Y\",\n  \"total\": 50002\n}"
+            }
+          ]
+        },
+        {
+          "name": "Search (q)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?q=stripe&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "stripe",
+                  "description": "Free text over agent, tool and args.",
+                  "disabled": false
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "disabled": false
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 500) console.warn('The mock API returns random 500s (~5-10%) on purpose. Send again.');",
+                  "const body = pm.response.json();",
+                  "pm.test('page shape: items[], nextCursor, total', () => {",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "  pm.expect(body.total).to.be.a('number');",
+                  "});",
+                  "pm.test('every item has the documented fields', () => {",
+                  "  body.items.forEach((e) => {",
+                  "    pm.expect(e).to.include.keys('id', 'timestamp', 'agent', 'tool', 'status', 'latencyMs', 'argsPreview');",
+                  "    pm.expect(['ok', 'blocked', 'error']).to.include(e.status);",
+                  "  });",
+                  "});",
+                  "pm.test('sorted newest first', () => {",
+                  "  for (let i = 1; i < body.items.length; i++) {",
+                  "    pm.expect(Date.parse(body.items[i - 1].timestamp)).to.be.at.least(Date.parse(body.items[i].timestamp));",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events?q=stripe&limit=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": "stripe",
+                      "description": "Free text over agent, tool and args.",
+                      "disabled": false
+                    },
+                    {
+                      "key": "limit",
+                      "value": "50",
+                      "disabled": false
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"evt_01M4G8EN9DF26XB6EWXH2FH5VP\",\n      \"timestamp\": \"2026-10-09T11:58:22.509Z\",\n      \"agent\": \"devops-runner\",\n      \"tool\": \"http.request\",\n      \"status\": \"ok\",\n      \"latencyMs\": 452,\n      \"argsPreview\": \"{\\\"headers\\\":{\\\"content-type\\\":\\\"application/json\\\"},\\\"method\\\":\\\"PATCH\\\",\\\"url\\\":\\\"https://api.stripe.com/v1.0/me/messages\\\"}\"\n    },\n    {\n      \"id\": \"evt_01M4G8DH5A56SX16E40AABMZBP\",\n      \"timestamp\": \"2026-10-09T11:57:45.514Z\",\n      \"agent\": \"marketing-writer\",\n      \"tool\": \"browser.navigate\",\n      \"status\": \"ok\",\n      \"latencyMs\": 649,\n      \"argsPreview\": \"{\\\"url\\\":\\\"https://docs.stripe.com/api/charges\\\"}\"\n    },\n    {\n      \"id\": \"evt_01M4G8D30HT5NGV246GX6FN6YQ\",\n      \"timestamp\": \"2026-10-09T11:57:31.025Z\",\n      \"agent\": \"marketing-writer\",\n      \"tool\": \"browser.navigate\",\n      \"status\": \"ok\",\n      \"latencyMs\": 476,\n      \"argsPreview\": \"{\\\"url\\\":\\\"https://docs.stripe.com/api/charges\\\"}\"\n    }\n  ],\n  \"nextCursor\": \"MTc5MTU0NzA1MTAyNXxldnRfMDFNNEc4RDMwSFQ1TkdWMjQ2R1g2Rk42WVE\",\n  \"total\": 1602\n}"
+            }
+          ]
+        },
+        {
+          "name": "Filter by agents (repeatable)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?agent=billing-assistant&agent=devops-runner&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "agent",
+                  "value": "billing-assistant",
+                  "description": "Repeat the param for several agents (OR).",
+                  "disabled": false
+                },
+                {
+                  "key": "agent",
+                  "value": "devops-runner",
+                  "disabled": false
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "disabled": false
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 500) console.warn('The mock API returns random 500s (~5-10%) on purpose. Send again.');",
+                  "const body = pm.response.json();",
+                  "pm.test('page shape: items[], nextCursor, total', () => {",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "  pm.expect(body.total).to.be.a('number');",
+                  "});",
+                  "pm.test('every item has the documented fields', () => {",
+                  "  body.items.forEach((e) => {",
+                  "    pm.expect(e).to.include.keys('id', 'timestamp', 'agent', 'tool', 'status', 'latencyMs', 'argsPreview');",
+                  "    pm.expect(['ok', 'blocked', 'error']).to.include(e.status);",
+                  "  });",
+                  "});",
+                  "pm.test('sorted newest first', () => {",
+                  "  for (let i = 1; i < body.items.length; i++) {",
+                  "    pm.expect(Date.parse(body.items[i - 1].timestamp)).to.be.at.least(Date.parse(body.items[i].timestamp));",
+                  "  }",
+                  "});",
+                  "pm.test('only the requested agents', () => body.items.forEach((e) => pm.expect(['billing-assistant', 'devops-runner']).to.include(e.agent)));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events?agent=billing-assistant&agent=devops-runner&limit=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "agent",
+                      "value": "billing-assistant",
+                      "description": "Repeat the param for several agents (OR).",
+                      "disabled": false
+                    },
+                    {
+                      "key": "agent",
+                      "value": "devops-runner",
+                      "disabled": false
+                    },
+                    {
+                      "key": "limit",
+                      "value": "50",
+                      "disabled": false
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"evt_01M4G8HB9YYMGM6DY61GN8TRG5\",\n      \"timestamp\": \"2026-10-09T11:59:50.590Z\",\n      \"agent\": \"billing-assistant\",\n      \"tool\": \"sql.query\",\n      \"status\": \"ok\",\n      \"latencyMs\": 60,\n      \"argsPreview\": \"{\\\"database\\\":\\\"analytics\\\",\\\"query\\\":\\\"SELECT id, email, plan FROM customers WHERE created_at > now() - interval '7 days' LIMI…\"\n    },\n    {\n      \"id\": \"evt_01M4G8GXKT1JK79MW059303EGF\",\n      \"timestamp\": \"2026-10-09T11:59:36.570Z\",\n      \"agent\": \"devops-runner\",\n      \"tool\": \"http.request\",\n      \"status\": \"ok\",\n      \"latencyMs\": 314,\n      \"argsPreview\": \"{\\\"headers\\\":{\\\"content-type\\\":\\\"application/json\\\"},\\\"method\\\":\\\"POST\\\",\\\"url\\\":\\\"https://acme.zendesk.com/v1/charges/ch_3PqL\\\"}\"\n    },\n    {\n      \"id\": \"evt_01M4G8GKWBZXZ7WCGK1MJ060DC\",\n      \"timestamp\": \"2026-10-09T11:59:26.603Z\",\n      \"agent\": \"devops-runner\",\n      \"tool\": \"fs.read\",\n      \"status\": \"ok\",\n      \"latencyMs\": 12,\n      \"argsPreview\": \"{\\\"path\\\":\\\"/workspace/README.md\\\"}\"\n    }\n  ],\n  \"nextCursor\": \"MTc5MTU0NzE2NjYwM3xldnRfMDFNNEc4R0tXQlpYWjdXQ0dLMU1KMDYwREM\",\n  \"total\": 11246\n}"
+            }
+          ]
+        },
+        {
+          "name": "Filter by status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?status=error&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "error",
+                  "description": "ok | blocked | error",
+                  "disabled": false
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "disabled": false
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 500) console.warn('The mock API returns random 500s (~5-10%) on purpose. Send again.');",
+                  "const body = pm.response.json();",
+                  "pm.test('page shape: items[], nextCursor, total', () => {",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "  pm.expect(body.total).to.be.a('number');",
+                  "});",
+                  "pm.test('every item has the documented fields', () => {",
+                  "  body.items.forEach((e) => {",
+                  "    pm.expect(e).to.include.keys('id', 'timestamp', 'agent', 'tool', 'status', 'latencyMs', 'argsPreview');",
+                  "    pm.expect(['ok', 'blocked', 'error']).to.include(e.status);",
+                  "  });",
+                  "});",
+                  "pm.test('sorted newest first', () => {",
+                  "  for (let i = 1; i < body.items.length; i++) {",
+                  "    pm.expect(Date.parse(body.items[i - 1].timestamp)).to.be.at.least(Date.parse(body.items[i].timestamp));",
+                  "  }",
+                  "});",
+                  "pm.test('only status=error', () => body.items.forEach((e) => pm.expect(e.status).to.eql('error')));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events?status=error&limit=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "error",
+                      "description": "ok | blocked | error",
+                      "disabled": false
+                    },
+                    {
+                      "key": "limit",
+                      "value": "50",
+                      "disabled": false
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"evt_01M4G9WJM2VP56FSKWRS27YBA7\",\n      \"timestamp\": \"2026-10-09T12:23:27.106Z\",\n      \"agent\": \"support-copilot\",\n      \"tool\": \"http.request\",\n      \"status\": \"error\",\n      \"latencyMs\": 30000,\n      \"argsPreview\": \"{\\\"headers\\\":{\\\"content-type\\\":\\\"application/json\\\"},\\\"method\\\":\\\"GET\\\",\\\"url\\\":\\\"https://graph.microsoft.com/api/v2/tickets.json\\\"}\"\n    },\n    {\n      \"id\": \"evt_01M4G8DTCYN75JVMP4EGG95A4T\",\n      \"timestamp\": \"2026-10-09T11:57:54.974Z\",\n      \"agent\": \"support-copilot\",\n      \"tool\": \"slack.post\",\n      \"status\": \"error\",\n      \"latencyMs\": 109,\n      \"argsPreview\": \"{\\\"channel\\\":\\\"#sales-wins\\\",\\\"text\\\":\\\"Deploy of web@4f2a1c finished, all checks green.\\\"}\"\n    },\n    {\n      \"id\": \"evt_01M4G85EW5W3PTH6W35Y4EV5SJ\",\n      \"timestamp\": \"2026-10-09T11:53:21.029Z\",\n      \"agent\": \"data-analyst\",\n      \"tool\": \"vector.upsert\",\n      \"status\": \"error\",\n      \"latencyMs\": 30000,\n      \"argsPreview\": \"{\\\"index\\\":\\\"help-center\\\",\\\"vectors\\\":[{\\\"dims\\\":1536,\\\"id\\\":\\\"doc_e5c926d2\\\"},{\\\"dims\\\":1536,\\\"id\\\":\\\"doc_0b5829da\\\"}]}\"\n    }\n  ],\n  \"nextCursor\": \"MTc5MTU0NjgwMTAyOXxldnRfMDFNNEc4NUVXNVczUFRINlczNVk0RVY1U0o\",\n  \"total\": 4038\n}"
+            }
+          ]
+        },
+        {
+          "name": "Time range (from / to)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?from=2026-10-09T11:00:00Z&to=2026-10-09T11:01:00Z&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-10-09T11:00:00Z",
+                  "description": "ISO 8601, inclusive",
+                  "disabled": false
+                },
+                {
+                  "key": "to",
+                  "value": "2026-10-09T11:01:00Z",
+                  "description": "ISO 8601, exclusive",
+                  "disabled": false
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Data spans 2026-10-07T12:00Z to 2026-10-09T12:00Z."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 500) console.warn('The mock API returns random 500s (~5-10%) on purpose. Send again.');",
+                  "const body = pm.response.json();",
+                  "pm.test('page shape: items[], nextCursor, total', () => {",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "  pm.expect(body.total).to.be.a('number');",
+                  "});",
+                  "pm.test('every item has the documented fields', () => {",
+                  "  body.items.forEach((e) => {",
+                  "    pm.expect(e).to.include.keys('id', 'timestamp', 'agent', 'tool', 'status', 'latencyMs', 'argsPreview');",
+                  "    pm.expect(['ok', 'blocked', 'error']).to.include(e.status);",
+                  "  });",
+                  "});",
+                  "pm.test('sorted newest first', () => {",
+                  "  for (let i = 1; i < body.items.length; i++) {",
+                  "    pm.expect(Date.parse(body.items[i - 1].timestamp)).to.be.at.least(Date.parse(body.items[i].timestamp));",
+                  "  }",
+                  "});",
+                  "pm.test('inside [from, to)', () => body.items.forEach((e) => { const t = Date.parse(e.timestamp); pm.expect(t).to.be.at.least(Date.parse('2026-10-09T11:00:00Z')); pm.expect(t).to.be.below(Date.parse('2026-10-09T11:01:00Z')); }));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events?from=2026-10-09T11:00:00Z&to=2026-10-09T11:01:00Z&limit=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "2026-10-09T11:00:00Z",
+                      "description": "ISO 8601, inclusive",
+                      "disabled": false
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-10-09T11:01:00Z",
+                      "description": "ISO 8601, exclusive",
+                      "disabled": false
+                    },
+                    {
+                      "key": "limit",
+                      "value": "50",
+                      "disabled": false
+                    }
+                  ]
+                },
+                "description": "Data spans 2026-10-07T12:00Z to 2026-10-09T12:00Z."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"evt_01M4G55JDRD1FTPCC4NPCZW09Y\",\n      \"timestamp\": \"2026-10-09T11:00:58.936Z\",\n      \"agent\": \"devops-runner\",\n      \"tool\": \"fs.read\",\n      \"status\": \"error\",\n      \"latencyMs\": 30000,\n      \"argsPreview\": \"{\\\"path\\\":\\\"/workspace/README.md\\\"}\"\n    },\n    {\n      \"id\": \"evt_01M4G556N6MSVXS0HGFG9TK9T8\",\n      \"timestamp\": \"2026-10-09T11:00:46.886Z\",\n      \"agent\": \"data-analyst\",\n      \"tool\": \"vector.upsert\",\n      \"status\": \"ok\",\n      \"latencyMs\": 289,\n      \"argsPreview\": \"{\\\"index\\\":\\\"help-center\\\",\\\"vectors\\\":[{\\\"dims\\\":1536,\\\"id\\\":\\\"doc_360fd808\\\"}]}\"\n    },\n    {\n      \"id\": \"evt_01M4G556E2BNA2ZVBK56Y1PJJ1\",\n      \"timestamp\": \"2026-10-09T11:00:46.658Z\",\n      \"agent\": \"security-triage\",\n      \"tool\": \"sql.query\",\n      \"status\": \"ok\",\n      \"latencyMs\": 108,\n      \"argsPreview\": \"{\\\"database\\\":\\\"crm\\\",\\\"query\\\":\\\"SELECT id, email, plan FROM customers WHERE created_at > now() - interval '7 days' LIMIT 457\\\"…\"\n    }\n  ],\n  \"nextCursor\": \"MTc5MTU0MzY0NjY1OHxldnRfMDFNNEc1NTZFMkJOQTJaVkJLNTZZMVBKSjE\",\n  \"total\": 11\n}"
+            }
+          ]
+        },
+        {
+          "name": "All filters combined",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?q=stripe&agent=devops-runner&status=ok&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "stripe",
+                  "disabled": false
+                },
+                {
+                  "key": "agent",
+                  "value": "devops-runner",
+                  "disabled": false
+                },
+                {
+                  "key": "status",
+                  "value": "ok",
+                  "disabled": false
+                },
+                {
+                  "key": "from",
+                  "value": "2026-10-08T00:00:00Z",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "2026-10-09T12:00:00Z",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "disabled": false
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 500) console.warn('The mock API returns random 500s (~5-10%) on purpose. Send again.');",
+                  "const body = pm.response.json();",
+                  "pm.test('page shape: items[], nextCursor, total', () => {",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "  pm.expect(body.total).to.be.a('number');",
+                  "});",
+                  "pm.test('every item has the documented fields', () => {",
+                  "  body.items.forEach((e) => {",
+                  "    pm.expect(e).to.include.keys('id', 'timestamp', 'agent', 'tool', 'status', 'latencyMs', 'argsPreview');",
+                  "    pm.expect(['ok', 'blocked', 'error']).to.include(e.status);",
+                  "  });",
+                  "});",
+                  "pm.test('sorted newest first', () => {",
+                  "  for (let i = 1; i < body.items.length; i++) {",
+                  "    pm.expect(Date.parse(body.items[i - 1].timestamp)).to.be.at.least(Date.parse(body.items[i].timestamp));",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events?q=stripe&agent=devops-runner&status=ok&limit=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": "stripe",
+                      "disabled": false
+                    },
+                    {
+                      "key": "agent",
+                      "value": "devops-runner",
+                      "disabled": false
+                    },
+                    {
+                      "key": "status",
+                      "value": "ok",
+                      "disabled": false
+                    },
+                    {
+                      "key": "from",
+                      "value": "2026-10-08T00:00:00Z",
+                      "description": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-10-09T12:00:00Z",
+                      "description": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "limit",
+                      "value": "50",
+                      "disabled": false
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"evt_01M4G8EN9DF26XB6EWXH2FH5VP\",\n      \"timestamp\": \"2026-10-09T11:58:22.509Z\",\n      \"agent\": \"devops-runner\",\n      \"tool\": \"http.request\",\n      \"status\": \"ok\",\n      \"latencyMs\": 452,\n      \"argsPreview\": \"{\\\"headers\\\":{\\\"content-type\\\":\\\"application/json\\\"},\\\"method\\\":\\\"PATCH\\\",\\\"url\\\":\\\"https://api.stripe.com/v1.0/me/messages\\\"}\"\n    },\n    {\n      \"id\": \"evt_01M4G6NMKA8YMBM7WXNNVBYY08\",\n      \"timestamp\": \"2026-10-09T11:27:14.026Z\",\n      \"agent\": \"devops-runner\",\n      \"tool\": \"http.request\",\n      \"status\": \"ok\",\n      \"latencyMs\": 245,\n      \"argsPreview\": \"{\\\"headers\\\":{\\\"content-type\\\":\\\"application/json\\\"},\\\"method\\\":\\\"GET\\\",\\\"url\\\":\\\"https://api.stripe.com/crm/v3/objects/contacts\\\"}\"\n    },\n    {\n      \"id\": \"evt_01M4G6566ABBZ7CJWGS0K8SRC7\",\n      \"timestamp\": \"2026-10-09T11:18:14.986Z\",\n      \"agent\": \"devops-runner\",\n      \"tool\": \"http.request\",\n      \"status\": \"ok\",\n      \"latencyMs\": 385,\n      \"argsPreview\": \"{\\\"headers\\\":{\\\"content-type\\\":\\\"application/json\\\"},\\\"method\\\":\\\"GET\\\",\\\"url\\\":\\\"https://api.stripe.com/repos/acme/web/pulls\\\"}\"\n    }\n  ],\n  \"nextCursor\": \"MTc5MTU0NDY5NDk4NnxldnRfMDFNNEc2NTY2QUJCWjdDSldHUzBLOFNSQzc\",\n  \"total\": 118\n}"
+            }
+          ]
+        },
+        {
+          "name": "No results",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?q=zzzz-no-match",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "zzzz-no-match",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "An empty result is a normal 200 with `items: []`, `nextCursor: null`, `total: 0`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 500) console.warn('The mock API returns random 500s (~5-10%) on purpose. Send again.');",
+                  "pm.test('empty page', () => { const b = pm.response.json(); pm.expect(b.items).to.have.length(0); pm.expect(b.nextCursor).to.eql(null); pm.expect(b.total).to.eql(0); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events?q=zzzz-no-match",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": "zzzz-no-match",
+                      "disabled": false
+                    }
+                  ]
+                },
+                "description": "An empty result is a normal 200 with `items: []`, `nextCursor: null`, `total: 0`."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"items\": [],\n  \"nextCursor\": null,\n  \"total\": 0\n}"
+            }
+          ]
+        },
+        {
+          "name": "Page size above the max (capped at 200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?limit=500",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "500",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Not documented in the brief: `limit` above 200 is silently capped to 200 (no error)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 500) console.warn('The mock API returns random 500s (~5-10%) on purpose. Send again.');",
+                  "pm.test('at most 200 items', () => pm.expect(pm.response.json().items.length).to.be.at.most(200));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events?limit=500",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "500",
+                      "disabled": false
+                    }
+                  ]
+                },
+                "description": "Not documented in the brief: `limit` above 200 is silently capped to 200 (no error)."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"evt_01M4G9WJM2VP56FSKWRS27YBA7\",\n      \"timestamp\": \"2026-10-09T12:23:27.106Z\",\n      \"agent\": \"support-copilot\",\n      \"tool\": \"http.request\",\n      \"status\": \"error\",\n      \"latencyMs\": 30000,\n      \"argsPreview\": \"{\\\"headers\\\":{\\\"content-type\\\":\\\"application/json\\\"},\\\"method\\\":\\\"GET\\\",\\\"url\\\":\\\"https://graph.microsoft.com/api/v2/tickets.json\\\"}\"\n    },\n    {\n      \"id\": \"evt_01M4G9WHZRR9FAG9YDDDXDK1RF\",\n      \"timestamp\": \"2026-10-09T12:23:26.456Z\",\n      \"agent\": \"knowledge-bot\",\n      \"tool\": \"vector.search\",\n      \"status\": \"ok\",\n      \"latencyMs\": 88,\n      \"argsPreview\": \"{\\\"index\\\":\\\"product-docs\\\",\\\"query\\\":\\\"competitor pricing for enterprise tier\\\",\\\"topK\\\":5}\"\n    },\n    \"… 198 more items (trimmed in this example) …\"\n  ],\n  \"nextCursor\": \"MTc5MTU0NjM2MjY1MXxldnRfMDFNNEc3UjJSVlFBSzNWRDU1TkI1OEZBSlQ\",\n  \"total\": 50002\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get event",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}"
+              ],
+              "query": []
+            },
+            "description": "Full event: `args` (any JSON, can be large), `result`, and `policyMatches` (rule names that fired). The default `eventId` is a blocked event with a policy match; \"List events\" overwrites it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 500) console.warn('The mock API returns random 500s (~5-10%) on purpose. Send again.');",
+                  "const e = pm.response.json();",
+                  "pm.test('full event fields', () => { pm.expect(e).to.include.keys('id', 'timestamp', 'agent', 'tool', 'status', 'latencyMs', 'args', 'result', 'policyMatches'); pm.expect(e.policyMatches).to.be.an('array'); });",
+                  "pm.test('id matches the request', () => pm.expect(e.id).to.eql(pm.collectionVariables.get('eventId')));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events/{{eventId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events",
+                    "{{eventId}}"
+                  ],
+                  "query": []
+                },
+                "description": "Full event: `args` (any JSON, can be large), `result`, and `policyMatches` (rule names that fired). The default `eventId` is a blocked event with a policy match; \"List events\" overwrites it."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"id\": \"evt_01M4G8GGWE6E27TYKTKJYNBBEV\",\n  \"timestamp\": \"2026-10-09T11:59:23.534Z\",\n  \"agent\": \"support-copilot\",\n  \"tool\": \"email.send\",\n  \"status\": \"blocked\",\n  \"latencyMs\": 4,\n  \"args\": {\n    \"body\": \"Here are the records you asked for. SSN: 230-82-4944\",\n    \"subject\": \"Customer export\",\n    \"to\": [\n      \"34qf6r5@gmail.com\"\n    ]\n  },\n  \"result\": {\n    \"blocked\": true,\n    \"message\": \"Blocked by policy dlp.pii_outbound\",\n    \"rule\": \"dlp.pii_outbound\"\n  },\n  \"policyMatches\": [\n    \"dlp.pii_outbound\"\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Histogram",
+      "item": [
+        {
+          "name": "Histogram, hourly",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events/histogram?bucket=1h",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "histogram"
+              ],
+              "query": [
+                {
+                  "key": "bucket",
+                  "value": "1h",
+                  "description": "1m | 5m | 1h (default 1m)",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Counts per time bucket. Accepts the same q, agent, status, from and to filters as /events. Buckets with no events are omitted."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 500) console.warn('The mock API returns random 500s (~5-10%) on purpose. Send again.');",
+                  "pm.test('buckets[] of {t, count}', () => { const b = pm.response.json(); pm.expect(b.bucket).to.eql('1h'); b.buckets.forEach((x) => { pm.expect(x.t).to.be.a('string'); pm.expect(x.count).to.be.a('number'); }); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events/histogram?bucket=1h",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events",
+                    "histogram"
+                  ],
+                  "query": [
+                    {
+                      "key": "bucket",
+                      "value": "1h",
+                      "description": "1m | 5m | 1h (default 1m)",
+                      "disabled": false
+                    }
+                  ]
+                },
+                "description": "Counts per time bucket. Accepts the same q, agent, status, from and to filters as /events. Buckets with no events are omitted."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"bucket\": \"1h\",\n  \"buckets\": [\n    {\n      \"t\": \"2026-10-07T12:00:00Z\",\n      \"count\": 964\n    },\n    {\n      \"t\": \"2026-10-07T13:00:00Z\",\n      \"count\": 2703\n    },\n    {\n      \"t\": \"2026-10-07T14:00:00Z\",\n      \"count\": 2370\n    },\n    {\n      \"t\": \"2026-10-07T15:00:00Z\",\n      \"count\": 1357\n    },\n    {\n      \"t\": \"2026-10-07T16:00:00Z\",\n      \"count\": 1394\n    },\n    {\n      \"t\": \"2026-10-07T17:00:00Z\",\n      \"count\": 1437\n    },\n    {\n      \"t\": \"2026-10-07T18:00:00Z\",\n      \"count\": 1450\n    },\n    {\n      \"t\": \"2026-10-07T19:00:00Z\",\n      \"count\": 1332\n    },\n    {\n      \"t\": \"2026-10-07T20:00:00Z\",\n      \"count\": 1296\n    },\n    {\n      \"t\": \"2026-10-07T21:00:00Z\",\n      \"count\": 2087\n    },\n    {\n      \"t\": \"2026-10-07T22:00:00Z\",\n      \"count\": 2036\n    },\n    {\n      \"t\": \"2026-10-07T23:00:00Z\",\n      \"count\": 923\n    },\n    {\n      \"t\": \"2026-10-08T00:00:00Z\",\n      \"count\": 811\n    },\n    {\n      \"t\": \"2026-10-08T01:00:00Z\",\n      \"count\": 697\n    },\n    {\n      \"t\": \"2026-10-08T02:00:00Z\",\n      \"count\": 601\n    },\n    {\n      \"t\": \"2026-10-08T03:00:00Z\",\n      \"count\": 502\n    },\n    {\n      \"t\": \"2026-10-08T04:00:00Z\",\n      \"count\": 1163\n    },\n    {\n      \"t\": \"2026-10-08T05:00:00Z\",\n      \"count\": 371\n    },\n    {\n      \"t\": \"2026-10-08T06:00:00Z\",\n      \"count\": 377\n    },\n    {\n      \"t\": \"2026-10-08T07:00:00Z\",\n      \"count\": 409\n    },\n    {\n      \"t\": \"2026-10-08T08:00:00Z\",\n      \"count\": 483\n    },\n    {\n      \"t\": \"2026-10-08T09:00:00Z\",\n      \"count\": 569\n    },\n    {\n      \"t\": \"2026-10-08T10:00:00Z\",\n      \"count\": 672\n    },\n    {\n      \"t\": \"2026-10-08T11:00:00Z\",\n      \"count\": 816\n    },\n    {\n      \"t\": \"2026-10-08T12:00:00Z\",\n      \"count\": 1021\n    },\n    {\n      \"t\": \"2026-10-08T13:00:00Z\",\n      \"count\": 1087\n    },\n    {\n      \"t\": \"2026-10-08T14:00:00Z\",\n      \"count\": 1278\n    },\n    {\n      \"t\": \"2026-10-08T15:00:00Z\",\n      \"count\": 1314\n    },\n    {\n      \"t\": \"2026-10-08T16:00:00Z\",\n      \"count\": 1395\n    },\n    {\n      \"t\": \"2026-10-08T17:00:00Z\",\n      \"count\": 1386\n    },\n    {\n      \"t\": \"2026-10-08T18:00:00Z\",\n      \"count\": 1396\n    },\n    {\n      \"t\": \"2026-10-08T19:00:00Z\",\n      \"count\": 1401\n    },\n    {\n      \"t\": \"2026-10-08T20:00:00Z\",\n      \"count\": 1329\n    },\n    {\n      \"t\": \"2026-10-08T21:00:00Z\",\n      \"count\": 1182\n    },\n    {\n      \"t\": \"2026-10-08T22:00:00Z\",\n      \"count\": 1079\n    },\n    {\n      \"t\": \"2026-10-08T23:00:00Z\",\n      \"count\": 1311\n    },\n    {\n      \"t\": \"2026-10-09T00:00:00Z\",\n      \"count\": 1098\n    },\n    {\n      \"t\": \"2026-10-09T01:00:00Z\",\n      \"count\": 1252\n    },\n    {\n      \"t\": \"2026-10-09T02:00:00Z\",\n      \"count\": 544\n    },\n    {\n      \"t\": \"2026-10-09T03:00:00Z\",\n      \"count\": 453\n    },\n    {\n      \"t\": \"2026-10-09T04:00:00Z\",\n      \"count\": 420\n    },\n    {\n      \"t\": \"2026-10-09T05:00:00Z\",\n      \"count\": 401\n    },\n    {\n      \"t\": \"2026-10-09T06:00:00Z\",\n      \"count\": 316\n    },\n    {\n      \"t\": \"2026-10-09T07:00:00Z\",\n      \"count\": 408\n    },\n    {\n      \"t\": \"2026-10-09T08:00:00Z\",\n      \"count\": 457\n    },\n    {\n      \"t\": \"2026-10-09T09:00:00Z\",\n      \"count\": 607\n    },\n    {\n      \"t\": \"2026-10-09T10:00:00Z\",\n      \"count\": 704\n    },\n    {\n      \"t\": \"2026-10-09T11:00:00Z\",\n      \"count\": 1341\n    },\n    {\n      \"t\": \"2026-10-09T12:00:00Z\",\n      \"count\": 2\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Histogram, 5 min, filtered",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events/histogram?bucket=5m&status=error&from=2026-10-09T10:00:00Z&to=2026-10-09T11:00:00Z",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "histogram"
+              ],
+              "query": [
+                {
+                  "key": "bucket",
+                  "value": "5m",
+                  "disabled": false
+                },
+                {
+                  "key": "status",
+                  "value": "error",
+                  "disabled": false
+                },
+                {
+                  "key": "from",
+                  "value": "2026-10-09T10:00:00Z",
+                  "disabled": false
+                },
+                {
+                  "key": "to",
+                  "value": "2026-10-09T11:00:00Z",
+                  "disabled": false
+                },
+                {
+                  "key": "agent",
+                  "value": "billing-assistant",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "stripe",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 500) console.warn('The mock API returns random 500s (~5-10%) on purpose. Send again.');"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events/histogram?bucket=5m&status=error&from=2026-10-09T10:00:00Z&to=2026-10-09T11:00:00Z",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events",
+                    "histogram"
+                  ],
+                  "query": [
+                    {
+                      "key": "bucket",
+                      "value": "5m",
+                      "disabled": false
+                    },
+                    {
+                      "key": "status",
+                      "value": "error",
+                      "disabled": false
+                    },
+                    {
+                      "key": "from",
+                      "value": "2026-10-09T10:00:00Z",
+                      "disabled": false
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-10-09T11:00:00Z",
+                      "disabled": false
+                    },
+                    {
+                      "key": "agent",
+                      "value": "billing-assistant",
+                      "description": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "q",
+                      "value": "stripe",
+                      "description": "",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"bucket\": \"5m\",\n  \"buckets\": [\n    {\n      \"t\": \"2026-10-09T10:00:00Z\",\n      \"count\": 4\n    },\n    {\n      \"t\": \"2026-10-09T10:05:00Z\",\n      \"count\": 7\n    },\n    {\n      \"t\": \"2026-10-09T10:10:00Z\",\n      \"count\": 4\n    },\n    {\n      \"t\": \"2026-10-09T10:15:00Z\",\n      \"count\": 3\n    },\n    {\n      \"t\": \"2026-10-09T10:20:00Z\",\n      \"count\": 6\n    },\n    {\n      \"t\": \"2026-10-09T10:25:00Z\",\n      \"count\": 2\n    },\n    {\n      \"t\": \"2026-10-09T10:30:00Z\",\n      \"count\": 2\n    },\n    {\n      \"t\": \"2026-10-09T10:35:00Z\",\n      \"count\": 4\n    },\n    {\n      \"t\": \"2026-10-09T10:40:00Z\",\n      \"count\": 1\n    },\n    {\n      \"t\": \"2026-10-09T10:45:00Z\",\n      \"count\": 4\n    },\n    {\n      \"t\": \"2026-10-09T10:50:00Z\",\n      \"count\": 9\n    },\n    {\n      \"t\": \"2026-10-09T10:55:00Z\",\n      \"count\": 8\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Live stream (SSE)",
+      "item": [
+        {
+          "name": "Stream new events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stream"
+              ],
+              "query": []
+            },
+            "description": "Server-Sent Events: each message is `id: <eventId>` + `data: <event JSON>` (same shape as list items), after an initial `retry: 2000`. The connection stays open. Recent Postman versions show SSE messages live; stop the request with Cancel. Older versions only show a hanging request."
+          },
+          "event": [],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "text/event-stream"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/stream",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "stream"
+                  ],
+                  "query": []
+                },
+                "description": "Server-Sent Events: each message is `id: <eventId>` + `data: <event JSON>` (same shape as list items), after an initial `retry: 2000`. The connection stays open. Recent Postman versions show SSE messages live; stop the request with Cancel. Older versions only show a hanging request."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "text",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "text/event-stream"
+                }
+              ],
+              "body": "retry: 2000\n\nid: evt_01M4G8FD9ZA8EYS21FS1CHXN0J\ndata: {\"id\":\"evt_01M4G8FD9ZA8EYS21FS1CHXN0J\",\"timestamp\":\"2026-10-09T11:58:47.103Z\",\"agent\":\"billing-assistant\",\"tool\":\"sql.query\",\"status\":\"ok\",\"latencyMs\":206,\"argsPreview\":\"{\\\"database\\\":\\\"crm\\\",\\\"query\\\":\\\"SELECT date_trunc('day', created_at) AS d, count(*) FROM orders GROUP BY d ORDER BY d DESC LI…\"}\n\nid: evt_01M4G8FEZ6RS7M7BBKFM0P6SBC\ndata: {\"id\":\"evt_01M4G8FEZ6RS7M7BBKFM0P6SBC\",\"timestamp\":\"2026-10-09T11:58:48.806Z\",\"agent\":\"security-triage\",\"tool\":\"jira.create_issue\",\"status\":\"ok\",\"latencyMs\":1303,\"argsPreview\":\"{\\\"description\\\":\\\"Reported by customer via chat. Steps: open billing, click download, nothing happens. Console shows 403.\\\"…\"}\n\nid: evt_01M4G8GCQTEC037AVG3X70RVR9\ndata: {\"id\":\"evt_01M4G8GCQTEC037AVG3X70RVR9\",\"timestamp\":\"2026-10-09T11:59:19.290Z\",\"agent\":\"security-triage\",\"tool\":\"sql.query\",\"status\":\"ok\",\"latencyMs\":89,\"argsPreview\":\"{\\\"database\\\":\\\"crm\\\",\\\"query\\\":\\\"SELECT date_trunc('day', created_at) AS d, count(*) FROM orders GROUP BY d ORDER BY d DESC LI…\"}\n\nid: evt_01M4G8GA9Y5B6P2G54428TBAX7\ndata: {\"id\":\"evt_01M4G8GA9Y5B6P2G54428TBAX7\",\"timestamp\":\"2026-10-09T11:59:16.798Z\",\"agent\":\"code-reviewer\",\"tool\":\"github.comment\",\"status\":\"ok\",\"latencyMs\":310,\"argsPreview\":\"{\\\"body\\\":\\\"This will N+1 on large accounts; consider batching.\\\",\\\"pr\\\":3298,\\\"repo\\\":\\\"acme/billing-service\\\"}\"}\n\nid: evt_01M4G8GF4QMXRXX8AER4FGK5Q5\ndata: {\"id\":\"evt_01M4G8GF4QMXRXX8AER4FGK5Q5\",\"timestamp\":\"2026-10-09T11:59:21.751Z\",\"agent\":\"data-analyst\",\"tool\":\"fs.write\",\"status\":\"ok\",\"latencyMs\":34,\"argsPreview\":\"{\\\"content\\\":\\\"Draft: Q4 launch announcement\\\",\\\"path\\\":\\\"/workspace/CHANGELOG.md\\\"}\"}\n\nid: evt_01M4G8GFYTSVMF3H79BRBYSG8T\ndata: {\"id\":\"evt_01M4G8GFYTSVMF3H79BRBYSG8T\",\"timestamp\":\"2026-10-09T11:59:22.586Z\",\"agent\":\"knowledge-bot\",\"tool\":\"vector.upsert\",\"status\":\"ok\",\"latencyMs\":75,\"argsPreview\":\"{\\\"index\\\":\\\"contracts\\\",\\\"vectors\\\":[{\\\"dims\\\":1536,\\\"id\\\":\\\"doc_4ebac476\\\"},{\\\"dims\\\":1536,\\\"id\\\":\\\"doc_081725f4\\\"},{\\\"dims\\\":1536,\\\"id\\\":\\\"d…\"}\n\nid: evt_01M4G8GJT5DY238V8F24MZA0PR\ndata: {\"id\":\"evt_01M4G8GJT5DY238V8F24MZA0PR\",\"timestamp\":\"2026-10-09T11:59:25.509Z\",\"agent\":\"hr-onboarding\",\"tool\":\"slack.post\",\"status\":\"ok\",\"latencyMs\":264,\"argsPreview\":\"{\\\"channel\\\":\\\"#eng-oncall\\\",\\\"text\\\":\\\"Reminder: onboarding session at 3pm.\\\"}\"}\n\nid: evt_01M4G8GGWE6E27TYKTKJYNBBEV\ndata: {\"id\":\"evt_01M4G8GGWE6E27TYKTKJYNBBEV\",\"timestamp\":\"2026-10-09T11:59:23.534Z\",\"agent\":\"support-copilot\",\"tool\":\"email.send\",\"status\":\"blocked\",\"latencyMs\":4,\"argsPreview\":\"{\\\"body\\\":\\\"Here are the records you asked for. SSN: 230-82-4944\\\",\\\"subject\\\":\\\"Customer export\\\",\\\"to\\\":[\\\"34qf6r5@gmail.com\\\"]}\"}\n\nid: evt_01M4G8GKWBZXZ7WCGK1MJ060DC\ndata: {\"id\":\"evt_01M4G8GKWBZXZ7WCGK1MJ060DC\",\"timestamp\":\"2026-10-09T11:59:26.603Z\",\"agent\":\"devops-runner\",\"tool\":\"fs.read\",\"status\":\"ok\",\"latencyMs\":12,\"argsPreview\":\"{\\\"path\\\":\\\"/workspace/README.md\\\"}\"}\n\nid: evt_01M4G8GXKT1JK79MW059303EGF\ndata: {\"id\":\"evt_01M4G8GXKT1JK79MW059303EGF\",\"timestamp\":\"2026-10-09T11:59:36.570Z\",\"agent\":\"devops-runner\",\"tool\":\"http.request\",\"status\":\"ok\",\"latencyMs\":314,\"argsPreview\":\"{\\\"headers\\\":{\\\"content-type\\\":\\\"application/json\\\"},\\\"method\\\":\\\"POST\\\",\\\"url\\\":\\\"https://acme.zendesk.com/v1/charges/ch_3PqL\\\"}\"}\n\nid: evt_01M4G8H3J19MTAYYVEF7H135SF\ndata: {\"id\":\"evt_01M4G8H3J19MTAYYVEF7H135SF\",\"timestamp\":\"2026-10-09T11:59:42.657Z\",\"agent\":\"meeting-scheduler\",\"tool\":\"calendar.create_event\",\"status\":\"ok\",\"latencyMs\":172,\"argsPreview\":\"{\\\"attendees\\\":[\\\"yuki.0@acme.io\\\",\\\"jonas.1@acme.io\\\",\\\"omar.2@acme.io\\\"],\\\"durationMinutes\\\":30,\\\"title\\\":\\\"Q4 planning\\\"}\"}\n\nid: evt_01M4G8GN593J0F50M4P0FFVGPE\ndata: {\"id\":\"evt_01M4G8GN593J0F50M4P0FFVGPE\",\"timestamp\":\"2026-10-09T11:59:27.913Z\",\"agent\":\"security-triage\",\"tool\":\"http.request\",\"status\":\"ok\",\"latencyMs\":516,\"argsPreview\":\"{\\\"headers\\\":{\\\"content-type\\\":\\\"application/json\\\"},\\\"method\\\":\\\"PATCH\\\",\\\"url\\\":\\\"https://payments.in"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Error cases",
+      "description": "All errors share the body shape `{ \"error\": string }`. 4xx are client errors (the app never retries them); 5xx are transient (the app retries twice with backoff).",
+      "item": [
+        {
+          "name": "404: unknown event id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events/evt_does_not_exist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "evt_does_not_exist"
+              ],
+              "query": []
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 with an error message', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error).to.eql(\"event not found\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "404 Not Found",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events/evt_does_not_exist",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events",
+                    "evt_does_not_exist"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"error\": \"event not found\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "400: invalid status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?status=bogus",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "bogus",
+                  "disabled": false
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 with an error message', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error).to.eql(\"status must be one of ok, blocked, error\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events?status=bogus",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "bogus",
+                      "disabled": false
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"error\": \"status must be one of ok, blocked, error\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "400: invalid cursor",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?cursor=garbage",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "cursor",
+                  "value": "garbage",
+                  "disabled": false
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 with an error message', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error).to.eql(\"invalid cursor\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events?cursor=garbage",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "cursor",
+                      "value": "garbage",
+                      "disabled": false
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"error\": \"invalid cursor\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "400: invalid from timestamp",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?from=notadate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "notadate",
+                  "disabled": false
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 with an error message', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error).to.eql(\"from must be an ISO 8601 timestamp\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events?from=notadate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "notadate",
+                      "disabled": false
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"error\": \"from must be an ISO 8601 timestamp\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "400: invalid histogram bucket",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events/histogram?bucket=2m",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "histogram"
+              ],
+              "query": [
+                {
+                  "key": "bucket",
+                  "value": "2m",
+                  "disabled": false
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 with an error message', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error).to.eql(\"bucket must be one of 1m, 5m, 1h\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events/histogram?bucket=2m",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events",
+                    "histogram"
+                  ],
+                  "query": [
+                    {
+                      "key": "bucket",
+                      "value": "2m",
+                      "disabled": false
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"error\": \"bucket must be one of 1m, 5m, 1h\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "500: random failure (example only)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?limit=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Not reproducible on demand: the API fails ~5–10% of requests at random. This request usually returns 200; the saved example shows what a failure looks like. Use the Collection Runner with several iterations to see some."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('either 200, or the documented 500 body', () => { if (pm.response.code === 500) pm.expect(pm.response.json().error).to.eql('internal server error'); else pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "500 Internal Server Error",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/events?limit=1",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "1",
+                      "disabled": false
+                    }
+                  ]
+                },
+                "description": "Not reproducible on demand: the API fails ~5–10% of requests at random. This request usually returns 200; the saved example shows what a failure looks like. Use the Collection Runner with several iterations to see some."
+              },
+              "status": "Internal Server Error",
+              "code": 500,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"error\": \"internal server error\"\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
