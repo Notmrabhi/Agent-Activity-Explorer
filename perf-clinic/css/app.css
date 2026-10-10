@@ -2,6 +2,7 @@
   font-family: 'IBM Plex Sans';
   src: url('../fonts/ibm-plex-sans.woff2') format('woff2');
   font-weight: 400 700;
+  font-display: swap;
 }
 
 :root {
@@ -104,6 +105,7 @@ main {
 .hero-image {
   display: block;
   width: 100%;
+  height: auto;
 }
 
 .hero-copy {
@@ -199,6 +201,7 @@ main {
 
 .agent-avatar {
   width: 48px;
+  height: 48px;
   border-radius: 12px;
 }
 
