@@ -45,7 +45,7 @@ export function PanelSection({
       {actions !== undefined && (
         <div className="absolute top-0 right-0 flex h-8 items-center gap-1">{actions}</div>
       )}
-      <div className="mt-2">{children}</div>
+      <div className="mt-1.5">{children}</div>
     </details>
   )
 }

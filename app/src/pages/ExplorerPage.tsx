@@ -10,6 +10,7 @@ import {
 } from 'react'
 import type { EventFilters, EventSummary } from '../api/types'
 import { DetailPanel } from '../components/DetailPanel/DetailPanel'
+import { ResizeHandle } from '../components/DetailPanel/ResizeHandle'
 import { EventTable, type EventTableHandle } from '../components/EventTable/EventTable'
 import { EmptyState } from '../components/feedback/EmptyState'
 import { ErrorState } from '../components/feedback/ErrorState'
@@ -22,14 +23,23 @@ import { InboxIcon } from '../components/ui/icons'
 import { useEventDetail, useEventList } from '../hooks/useEvents'
 import { useExplorerUrlState } from '../hooks/useExplorerUrlState'
 import { DOCKED_PANEL_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
+import { panelWidthStyle, usePanelWidth } from '../hooks/usePanelWidth'
 import { useSlowFlag } from '../hooks/useSlowFlag'
 import { STATUS_LABELS } from '../lib/format'
+import { describeRangeInWords } from '../lib/timeRange'
 import { hasActiveFilters, serializeExplorerParams } from '../lib/urlState'
 
 const APP_TITLE = 'Agent Activity'
 
+/** The resize handle's aria-controls target. */
+const DETAIL_PANEL_ID = 'event-detail-panel'
+
 /** Any dialog except the detail panel: those own their keys (shortcuts dialog, filter popovers). */
 const OTHER_DIALOG_SELECTOR = 'dialog[open]:not([data-detail-panel]), [role="dialog"]:not([data-detail-panel])'
+
+function hasTimeRange(filters: EventFilters): boolean {
+  return filters.from !== null || filters.to !== null
+}
 
 function isEditableTarget(target: Element): boolean {
   return (
@@ -40,7 +50,10 @@ function isEditableTarget(target: Element): boolean {
   )
 }
 
-/** Names the filters that produced nothing, e.g. Nothing for “stripe” from <b>devops</b> with status <b>Error</b>. */
+/**
+ * Names the filters that produced nothing, e.g. Nothing for “stripe” from <b>devops</b> with
+ * status <b>Error</b> <b>between Oct 09 11:00 and 12:00 UTC</b>.
+ */
 function describeEmpty(filters: EventFilters): ReactNode {
   const strong = 'font-medium text-fg'
   const q = filters.q.trim()
@@ -58,6 +71,12 @@ function describeEmpty(filters: EventFilters): ReactNode {
           {' '}with status <b className={strong}>{STATUS_LABELS[filters.status]}</b>
         </>
       )}
+      {hasTimeRange(filters) && (
+        <>
+          {' '}
+          <b className={strong}>{describeRangeInWords(filters.from, filters.to)}</b>
+        </>
+      )}
       .
     </>
   )
@@ -72,13 +91,25 @@ function describeEmpty(filters: EventFilters): ReactNode {
  */
 export default function ExplorerPage() {
   const url = useExplorerUrlState()
-  const { filters, eventId, setQuery, setAgents, setStatus, clearFilters, openEvent, closeEvent } = url
+  const {
+    filters,
+    eventId,
+    setQuery,
+    setAgents,
+    setStatus,
+    setTimeRange,
+    clearFilters,
+    openEvent,
+    closeEvent,
+  } = url
   const list = useEventList(filters)
   const { rows, total } = list
   const docked = useMediaQuery(DOCKED_PANEL_QUERY)
   const listSlow = useSlowFlag(list.isFetching)
+  const panelWidth = usePanelWidth()
 
   const tableRef = useRef<EventTableHandle>(null)
+  const layoutRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
@@ -95,10 +126,15 @@ export default function ExplorerPage() {
   // the same neighbour and stall, so steps are taken from the newest id we asked for. Ids are
   // dropped once the URL catches up; any other change (Back, a click in the list) clears them.
   const requestedIdsRef = useRef<string[]>([])
+  // The event the panel is showing or about to show (the newest step asked for). Focus return
+  // uses it: a fast "kkk Esc" can close the panel before the router commits the last steps, and
+  // the row to return to is the one the user stepped to, not the last one rendered.
+  const lastOpenIdRef = useRef(eventId)
   useLayoutEffect(() => {
     const requested = requestedIdsRef.current
     const position = eventId === null ? -1 : requested.indexOf(eventId)
     requestedIdsRef.current = position === -1 ? [] : requested.slice(position + 1)
+    if (eventId !== null) lastOpenIdRef.current = requestedIdsRef.current.at(-1) ?? eventId
   }, [eventId])
 
   const step = useCallback(
@@ -108,6 +144,7 @@ export default function ExplorerPage() {
       const target = index === undefined ? undefined : rows[index + delta]
       if (!target) return
       requestedIdsRef.current.push(target.id)
+      lastOpenIdRef.current = target.id
       // replace: stepping through events should not leave one history entry per event.
       openEvent(target.id, { replace: true })
     },
@@ -115,6 +152,18 @@ export default function ExplorerPage() {
   )
   const goPrev = useCallback(() => step(-1), [step])
   const goNext = useCallback(() => step(1), [step])
+
+  // Opening from the list (click, Enter, J/K in the grid) records the target the same way `step`
+  // does. Otherwise "click row B, Esc" within one render returns focus to the previous row A,
+  // because `eventId` has not caught up with the click yet.
+  const openFromList = useCallback(
+    (id: string, options: { replace?: boolean }) => {
+      requestedIdsRef.current = []
+      lastOpenIdRef.current = id
+      openEvent(id, options)
+    },
+    [openEvent],
+  )
 
   // --- Focus return ---------------------------------------------------------------------------
   // When the panel closes (Esc, close button, Back), put focus back on the row that was open, so
@@ -127,7 +176,8 @@ export default function ExplorerPage() {
     if (closedId === null || eventId !== null) return
     const focused = document.activeElement
     if (focused !== null && focused !== document.body && focused.closest('[role="grid"]') === null) return
-    if (!tableRef.current?.focusRow(closedId)) tableRef.current?.focusTable()
+    const rowId = lastOpenIdRef.current ?? closedId
+    if (!tableRef.current?.focusRow(rowId)) tableRef.current?.focusTable()
   }, [eventId])
 
   // --- Document title -------------------------------------------------------------------------
@@ -209,8 +259,12 @@ export default function ExplorerPage() {
   // so opening an event does not scroll the list back to the top.
   const resetKey = serializeExplorerParams({ filters, eventId: null }).toString()
 
+  const timeRangeActive = hasTimeRange(filters)
   const activeFilterCount =
-    (filters.q.trim() !== '' ? 1 : 0) + (filters.agents.length > 0 ? 1 : 0) + (filters.status !== null ? 1 : 0)
+    (filters.q.trim() !== '' ? 1 : 0) +
+    (filters.agents.length > 0 ? 1 : 0) +
+    (filters.status !== null ? 1 : 0) +
+    (timeRangeActive ? 1 : 0)
 
   let listContent: ReactNode
   if (list.isError && rows.length === 0) {
@@ -226,11 +280,16 @@ export default function ExplorerPage() {
             <Button variant="primary" onClick={clearAllFromEmpty}>
               Clear all filters
             </Button>
-            {/* With several filters, offer to loosen just the most likely culprit. */}
-            {activeFilterCount > 1 && filters.status !== null && (
+            {/* With several filters, offer to loosen just the most likely culprit. A narrow time
+                window comes first: a preset or shared link outside the data span empties any
+                combination of the other filters. */}
+            {activeFilterCount > 1 && timeRangeActive && (
+              <Button onClick={() => setTimeRange({ from: null, to: null })}>Remove time range</Button>
+            )}
+            {activeFilterCount > 1 && !timeRangeActive && filters.status !== null && (
               <Button onClick={() => setStatus(null)}>Remove status filter</Button>
             )}
-            {activeFilterCount > 1 && filters.status === null && filters.q.trim() !== '' && (
+            {activeFilterCount > 1 && !timeRangeActive && filters.status === null && filters.q.trim() !== '' && (
               <Button
                 onClick={() => {
                   setQuery('', { replace: false })
@@ -265,7 +324,7 @@ export default function ExplorerPage() {
         isFetchNextPageError={list.isFetchNextPageError}
         nextPageError={list.error}
         onLoadMore={loadMore}
-        onOpen={openEvent}
+        onOpen={openFromList}
         resetKey={resetKey}
       />
     )
@@ -280,6 +339,9 @@ export default function ExplorerPage() {
         onClose={closeEvent}
         onPrev={prevRow ? goPrev : undefined}
         onNext={nextRow ? goNext : undefined}
+        expanded={panelWidth.expanded}
+        onToggleExpanded={panelWidth.toggleExpanded}
+        id={DETAIL_PANEL_ID}
       />
     )
 
@@ -291,6 +353,7 @@ export default function ExplorerPage() {
         onQueryChange={setQuery}
         onAgentsChange={setAgents}
         onStatusChange={setStatus}
+        onTimeRangeChange={setTimeRange}
         onClearFilters={clearFilters}
         total={total}
         loadedCount={rows.length}
@@ -298,11 +361,24 @@ export default function ExplorerPage() {
         isLoading={list.isPending || list.isPlaceholderData}
         searchInputRef={searchInputRef}
       />
-      <div className="flex min-h-0 flex-1">
+      {/* Carries the docked panel's width as a CSS variable, which ResizeHandle rewrites while
+          dragging without re-rendering this page. */}
+      <div ref={layoutRef} style={panelWidthStyle(panelWidth.width)} className="flex min-h-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col px-4 pt-4 md:px-6">
           {listSlow && <SlowNotice onRetry={retrySlow} className="mb-3 shrink-0" />}
           {listContent}
         </main>
+        {docked && panel && (
+          <ResizeHandle
+            width={panelWidth.width}
+            minWidth={panelWidth.minWidth}
+            maxWidth={panelWidth.maxWidth}
+            onResize={panelWidth.setWidth}
+            onReset={panelWidth.reset}
+            targetRef={layoutRef}
+            controls={DETAIL_PANEL_ID}
+          />
+        )}
         {docked && panel}
       </div>
       {!docked && panel}

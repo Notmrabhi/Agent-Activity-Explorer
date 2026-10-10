@@ -182,6 +182,33 @@ export function RetryIcon(props: IconProps) {
   )
 }
 
+/** "Expand panel": arrows pointing out to the corners. */
+export function MaximizeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+    </Svg>
+  )
+}
+
+/** "Restore panel width": arrows pointing back in. */
+export function MinimizeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" />
+    </Svg>
+  )
+}
+
+/** Policy rules that fired for an event. */
+export function ShieldIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 3 4 6v6c0 5 3.4 8 8 9 4.6-1 8-4 8-9V6l-8-3z" />
+    </Svg>
+  )
+}
+
 /**
  * Brand mark from the header mockup: a rounded square with an activity trace.
  * Drawn on its own 28-unit grid. Colour is currentColor; defaults to the accent.
