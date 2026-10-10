@@ -40,8 +40,12 @@ function eventsHandler({ request }: { request: Request }) {
   }
   const q = url.searchParams.get('q') ?? ''
   const status = url.searchParams.get('status')
+  const from = url.searchParams.get('from')
   const matching = EVENTS.filter(
-    (event) => (!status || event.status === status) && (!q || event.argsPreview.includes(q)),
+    (event) =>
+      (!status || event.status === status) &&
+      (!q || event.argsPreview.includes(q)) &&
+      (!from || event.timestamp >= from),
   )
   const start = Number(url.searchParams.get('cursor') ?? 0)
   const items = matching.slice(start, start + PAGE)
@@ -144,6 +148,13 @@ describe('ExplorerPage', () => {
       await waitFor(() => expect(row('evt_000')).toBeInTheDocument())
     },
   )
+
+  it('says when a time range starts after the newest event', async () => {
+    renderPage('/?from=2026-10-10T00:00:00Z')
+    expect(
+      await screen.findByText(/The newest event is from/, undefined, { timeout: 5000 }),
+    ).toHaveTextContent('Oct 09 · 12:00 UTC')
+  })
 
   it('keeps loaded rows when the next page fails, and offers Retry', async () => {
     failCursorPages = true

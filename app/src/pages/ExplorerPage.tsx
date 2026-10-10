@@ -22,14 +22,14 @@ import { ShortcutsDialog } from '../components/ShortcutsDialog'
 import { Toolbar } from '../components/Toolbar/Toolbar'
 import { Button } from '../components/ui/Button'
 import { InboxIcon } from '../components/ui/icons'
-import { useEventDetail, useEventList } from '../hooks/useEvents'
+import { useEventDetail, useEventList, useNewestEventTime } from '../hooks/useEvents'
 import { useExplorerUrlState } from '../hooks/useExplorerUrlState'
 import { useLiveEvents } from '../hooks/useLiveEvents'
 import { DOCKED_PANEL_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
 import { panelWidthStyle, usePanelWidth } from '../hooks/usePanelWidth'
 import { useSlowFlag } from '../hooks/useSlowFlag'
 import { STATUS_LABELS } from '../lib/format'
-import { describeRangeInWords } from '../lib/timeRange'
+import { describeRangeInWords, formatAnchor } from '../lib/timeRange'
 import { hasActiveFilters, serializeExplorerParams } from '../lib/urlState'
 
 const APP_TITLE = 'Agent Activity'
@@ -38,7 +38,8 @@ const APP_TITLE = 'Agent Activity'
 const DETAIL_PANEL_ID = 'event-detail-panel'
 
 /** Any dialog except the detail panel: those own their keys (shortcuts dialog, filter popovers). */
-const OTHER_DIALOG_SELECTOR = 'dialog[open]:not([data-detail-panel]), [role="dialog"]:not([data-detail-panel])'
+const OTHER_DIALOG_SELECTOR =
+  'dialog[open]:not([data-detail-panel]), [role="dialog"]:not([data-detail-panel])'
 
 function hasTimeRange(filters: EventFilters): boolean {
   return filters.from !== null || filters.to !== null
@@ -57,7 +58,7 @@ function isEditableTarget(target: Element): boolean {
  * Names the filters that produced nothing, e.g. Nothing for “stripe” from <b>devops</b> with
  * status <b>Error</b> <b>between Oct 09 11:00 and 12:00 UTC</b>.
  */
-function describeEmpty(filters: EventFilters): ReactNode {
+function describeEmpty(filters: EventFilters, newest: string | null | undefined): ReactNode {
   const strong = 'font-medium text-fg'
   const q = filters.q.trim()
   return (
@@ -66,12 +67,14 @@ function describeEmpty(filters: EventFilters): ReactNode {
       {q !== '' && <> for “{q}”</>}
       {filters.agents.length > 0 && (
         <>
-          {' '}from <b className={strong}>{filters.agents.join(', ')}</b>
+          {' '}
+          from <b className={strong}>{filters.agents.join(', ')}</b>
         </>
       )}
       {filters.status !== null && (
         <>
-          {' '}with status <b className={strong}>{STATUS_LABELS[filters.status]}</b>
+          {' '}
+          with status <b className={strong}>{STATUS_LABELS[filters.status]}</b>
         </>
       )}
       {hasTimeRange(filters) && (
@@ -81,6 +84,13 @@ function describeEmpty(filters: EventFilters): ReactNode {
         </>
       )}
       .
+      {newest && filters.from !== null && Date.parse(newest) < Date.parse(filters.from) && (
+        <>
+          {' '}
+          The newest event is from <b className={strong}>{formatAnchor(newest)} UTC</b>, before this
+          range starts.
+        </>
+      )}
     </>
   )
 }
@@ -106,6 +116,8 @@ export default function ExplorerPage() {
     closeEvent,
   } = url
   const list = useEventList(filters)
+  // Already loaded for the time-range presets; the empty state uses it to explain a range past the data.
+  const newestTime = useNewestEventTime()
   const { rows, total } = list
   const docked = useMediaQuery(DOCKED_PANEL_QUERY)
   const listSlow = useSlowFlag(list.isFetching)
@@ -142,7 +154,8 @@ export default function ExplorerPage() {
   // id -> position in the loaded rows: the panel's summary and its prev/next neighbours.
   const indexById = useMemo(() => new Map(rows.map((row, index) => [row.id, index])), [rows])
   const openIndex = eventId === null ? undefined : indexById.get(eventId)
-  const openSummary: EventSummary | undefined = openIndex === undefined ? undefined : rows[openIndex]
+  const openSummary: EventSummary | undefined =
+    openIndex === undefined ? undefined : rows[openIndex]
   const prevRow = openIndex === undefined ? undefined : rows[openIndex - 1]
   const nextRow = openIndex === undefined ? undefined : rows[openIndex + 1]
 
@@ -211,7 +224,8 @@ export default function ExplorerPage() {
     prevEventIdRef.current = eventId
     if (closedId === null || eventId !== null) return
     const focused = document.activeElement
-    if (focused !== null && focused !== document.body && focused.closest('[role="grid"]') === null) return
+    if (focused !== null && focused !== document.body && focused.closest('[role="grid"]') === null)
+      return
     const rowId = lastOpenIdRef.current ?? closedId
     if (!tableRef.current?.focusRow(rowId)) tableRef.current?.focusTable()
   }, [eventId])
@@ -304,13 +318,20 @@ export default function ExplorerPage() {
 
   let listContent: ReactNode
   if (list.isError && rows.length === 0) {
-    listContent = <ErrorState error={list.error} onRetry={retryList} retrying={list.isFetching} headingLevel={2} />
+    listContent = (
+      <ErrorState
+        error={list.error}
+        onRetry={retryList}
+        retrying={list.isFetching}
+        headingLevel={2}
+      />
+    )
   } else if (list.isSuccess && !list.isPlaceholderData && rows.length === 0) {
     listContent = hasActiveFilters(filters) ? (
       <EmptyState
         headingLevel={2}
         title="No events match your filters"
-        description={describeEmpty(filters)}
+        description={describeEmpty(filters, newestTime.data)}
         actions={
           <>
             <Button variant="primary" onClick={clearAllFromEmpty}>
@@ -320,21 +341,26 @@ export default function ExplorerPage() {
                 window comes first: a preset or shared link outside the data span empties any
                 combination of the other filters. */}
             {activeFilterCount > 1 && timeRangeActive && (
-              <Button onClick={() => setTimeRange({ from: null, to: null })}>Remove time range</Button>
+              <Button onClick={() => setTimeRange({ from: null, to: null })}>
+                Remove time range
+              </Button>
             )}
             {activeFilterCount > 1 && !timeRangeActive && filters.status !== null && (
               <Button onClick={() => setStatus(null)}>Remove status filter</Button>
             )}
-            {activeFilterCount > 1 && !timeRangeActive && filters.status === null && filters.q.trim() !== '' && (
-              <Button
-                onClick={() => {
-                  setQuery('', { replace: false })
-                  focusSearch()
-                }}
-              >
-                Clear search
-              </Button>
-            )}
+            {activeFilterCount > 1 &&
+              !timeRangeActive &&
+              filters.status === null &&
+              filters.q.trim() !== '' && (
+                <Button
+                  onClick={() => {
+                    setQuery('', { replace: false })
+                    focusSearch()
+                  }}
+                >
+                  Clear search
+                </Button>
+              )}
           </>
         }
       />
@@ -385,7 +411,9 @@ export default function ExplorerPage() {
     <div className="flex h-dvh flex-col bg-bg text-fg">
       <AppHeader
         onOpenShortcuts={() => setShortcutsOpen(true)}
-        actions={<LiveToggle on={liveOn} status={live.status} onToggle={() => setLiveOn((on) => !on)} />}
+        actions={
+          <LiveToggle on={liveOn} status={live.status} onToggle={() => setLiveOn((on) => !on)} />
+        }
       />
       <Toolbar
         filters={filters}
@@ -402,13 +430,14 @@ export default function ExplorerPage() {
       />
       {/* Carries the docked panel's width as a CSS variable, which ResizeHandle rewrites while
           dragging without re-rendering this page. */}
-      <div ref={layoutRef} style={panelWidthStyle(panelWidth.width)} className="flex min-h-0 flex-1">
+      <div
+        ref={layoutRef}
+        style={panelWidthStyle(panelWidth.width)}
+        className="flex min-h-0 flex-1"
+      >
         <main className="flex min-w-0 flex-1 flex-col px-4 pt-4 md:px-6">
           {listSlow && <SlowNotice onRetry={retrySlow} className="mb-3 shrink-0" />}
-          <div
-            className="relative flex min-h-0 flex-1 flex-col"
-            ref={listAreaRef}
-          >
+          <div className="relative flex min-h-0 flex-1 flex-col" ref={listAreaRef}>
             {/* Always mounted so its live region can announce; shows nothing while live is off. */}
             <NewEventsPill
               count={liveOn ? live.pendingCount : 0}
