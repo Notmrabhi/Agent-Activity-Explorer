@@ -24,14 +24,6 @@ function formatTime(iso) {
   return iso.slice(11, 19);
 }
 
-function countByAgent(events) {
-  const counts = {};
-  events.forEach((event) => {
-    counts[event.agent] = (counts[event.agent] || 0) + 1;
-  });
-  return counts;
-}
-
 function renderAgents() {
   grid.innerHTML = window.AGENTS.map((agent, index) => {
     const image = 'assets/agents/agent-' + String((index % 6) + 1).padStart(2, '0') + '.webp';
@@ -47,8 +39,7 @@ function renderAgents() {
   }).join('');
 }
 
-function renderAgentCounts() {
-  const counts = countByAgent(window.ACTIVITY);
+function renderAgentCounts(counts) {
   grid.querySelectorAll('.agent-count').forEach((cell, index) => {
     cell.textContent = (counts[window.AGENTS[index].name] || 0).toLocaleString() + ' calls today';
   });
@@ -79,45 +70,10 @@ function rememberViewed(items) {
   localStorage.setItem(storageKey, JSON.stringify([...viewedIds]));
 }
 
-let sortedEvents = [];
-const searchTexts = [];
-
-function buildSearchIndex() {
-  sortedEvents = window.ACTIVITY
-    .map((event) => ({ event, time: Date.parse(event.timestamp) }))
-    .sort((a, b) => b.time - a.time)
-    .map((entry) => entry.event);
-}
-
-function searchText(i) {
-  let text = searchTexts[i];
-  if (text === undefined) text = searchTexts[i] = JSON.stringify(sortedEvents[i]).toLowerCase();
-  return text;
-}
-
-// Builds the search texts in 5 ms tasks so the first search doesn't pay for all of them.
-const indexChannel = new MessageChannel();
-let indexed = 0;
-indexChannel.port1.onmessage = () => {
-  const end = performance.now() + 5;
-  while (indexed < sortedEvents.length && performance.now() < end) searchText(indexed++);
-  if (indexed < sortedEvents.length) indexChannel.port2.postMessage(0);
-};
-
-function search(query) {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return sortedEvents;
-  const matches = [];
-  for (let i = 0; i < sortedEvents.length; i++) {
-    if (searchText(i).includes(needle)) matches.push(sortedEvents[i]);
-  }
-  return matches;
-}
-
-function renderResults(query) {
-  const matches = search(query);
-  const page = matches.slice(0, pageSize);
-  resultsCount.textContent = matches.length.toLocaleString() + ' matching tool calls';
+function renderResults(page, total) {
+  resultsCount.textContent = total.toLocaleString() + ' matching tool calls';
+  eventsById.clear();
+  page.forEach((event) => eventsById.set(event.id, event));
   resultsList.innerHTML = page.map((event) => {
     const isNew = !viewedIds.has(event.id);
     return (
@@ -133,28 +89,26 @@ function renderResults(query) {
     );
   }).join('');
   fitSummaries();
-  measureRows();
+  // Next frame: the browser lays out then anyway, so reading row positions costs no extra layout.
+  requestAnimationFrame(measureRows);
   rememberViewed(page);
 }
 
-// Each pass writes all cells, then reads all cells: one layout per pass.
+// Text widths come from canvas measureText, which needs no layout. All summary cells share one
+// column width, so a single read replaces the old shrink-and-check loop per cell.
+const textMeasure = document.createElement('canvas').getContext('2d');
 function fitSummaries() {
-  const cells = [...resultsList.querySelectorAll('.result-summary')];
-  cells.forEach((cell) => { cell.style.fontSize = '14px'; });
-  const sizes = cells.map((cell) => {
-    if (cell.scrollWidth <= cell.clientWidth) return 14;
-    const estimate = Math.ceil((14 * cell.clientWidth / cell.scrollWidth) * 2) / 2 + 0.5;
-    return Math.min(13.5, Math.max(11, estimate));
+  const cells = resultsList.querySelectorAll('.result-summary');
+  if (!cells.length) return;
+  const style = getComputedStyle(cells[0]);
+  const available = cells[0].clientWidth;
+  textMeasure.font = style.fontWeight + ' 14px ' + style.fontFamily;
+  cells.forEach((cell) => {
+    const width = textMeasure.measureText(cell.textContent).width;
+    let size = 14;
+    while (size > 11 && Math.round((width * size) / 14) > available) size -= 0.5;
+    cell.style.fontSize = size + 'px';
   });
-  let pending = cells.map((_, i) => i).filter((i) => sizes[i] < 14);
-  while (pending.length) {
-    pending.forEach((i) => { cells[i].style.fontSize = sizes[i] + 'px'; });
-    pending = pending.filter((i) => {
-      if (sizes[i] <= 11 || cells[i].scrollWidth <= cells[i].clientWidth) return false;
-      sizes[i] -= 0.5;
-      return true;
-    });
-  }
 }
 
 let fitFrame = 0;
@@ -168,12 +122,6 @@ function scheduleFitSummaries() {
 }
 
 const callsPerMinute = new Map();
-function countCallsPerMinute() {
-  for (const event of window.ACTIVITY) {
-    const minute = event.timestamp.slice(11, 16);
-    callsPerMinute.set(minute, (callsPerMinute.get(minute) || 0) + 1);
-  }
-}
 
 let rows = [];
 let rowOffsets = [];
@@ -233,6 +181,7 @@ function hidePreview() {
   preview.hidden = true;
 }
 
+// Events of the rows currently shown.
 const eventsById = new Map();
 let previewId = null;
 
@@ -250,6 +199,7 @@ function showPreview(event) {
 }
 
 let tickerPanel = null;
+let tickerList = null;
 let tickerTimer = 0;
 let tickerListeners = null;
 
@@ -274,15 +224,10 @@ function openTicker() {
   panel.innerHTML = '<header class="ticker-header">Live tool calls</header><ul class="ticker-list"></ul>';
   document.body.appendChild(panel);
   tickerPanel = panel;
-  const list = panel.querySelector('.ticker-list');
+  tickerList = panel.querySelector('.ticker-list');
 
   tickerTimer = setInterval(() => {
-    if (!ready) return;
-    const event = window.ACTIVITY[Math.floor(Math.random() * window.ACTIVITY.length)];
-    list.prepend(tickerRow(event));
-    while (list.children.length > tickerVisibleRows) {
-      list.lastElementChild.remove();
-    }
+    if (ready) worker.postMessage({ type: 'random' });
   }, tickerIntervalMs);
 
   tickerListeners = new AbortController();
@@ -302,16 +247,42 @@ function closeTicker() {
   tickerListeners.abort();
   tickerPanel.remove();
   tickerPanel = null;
+  tickerList = null;
   tickerToggle.setAttribute('aria-pressed', 'false');
   tickerToggle.textContent = 'Show live calls';
 }
 
+// The 100k events are built and searched in a worker, so that work never blocks the page.
+const worker = new Worker('js/data-worker.js');
 let ready = false;
+let searchId = 0;
+
+function requestSearch() {
+  searchId++;
+  worker.postMessage({ type: 'search', id: searchId, query: searchInput.value });
+}
+
+worker.onmessage = ({ data }) => {
+  if (data.type === 'ready') {
+    ready = true;
+    Object.entries(data.minuteCounts).forEach(([minute, count]) => callsPerMinute.set(minute, count));
+    renderAgentCounts(data.agentCounts);
+    if (searchInput.value.trim()) requestSearch();
+    else renderResults(data.firstPage, data.total);
+  } else if (data.type === 'results') {
+    // Only the newest search; an older answer arriving late is dropped.
+    if (data.id === searchId) renderResults(data.page, data.total);
+  } else if (data.type === 'random' && tickerList) {
+    tickerList.prepend(tickerRow(data.event));
+    while (tickerList.children.length > tickerVisibleRows) tickerList.lastElementChild.remove();
+  }
+};
+
 let searchTimer = 0;
 searchInput.addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
-    if (ready) renderResults(searchInput.value);
+    if (ready) requestSearch();
   }, 150);
 });
 window.addEventListener('scroll', onScroll, { passive: true });
@@ -324,16 +295,5 @@ backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 's
 tickerToggle.addEventListener('click', () => (tickerPanel ? closeTicker() : openTicker()));
 
 renderAgents();
-
-function start() {
-  window.ACTIVITY = window.buildActivity(100000);
-  buildSearchIndex();
-  countCallsPerMinute();
-  window.ACTIVITY.forEach((event) => eventsById.set(event.id, event));
-  renderAgentCounts();
-  renderResults(searchInput.value);
-  ready = true;
-  indexChannel.port2.postMessage(0);
-}
-// Build data and render the list after the first paint.
-requestAnimationFrame(() => setTimeout(start, 0));
+// Canvas measures with the web font only once it has loaded.
+document.fonts.ready.then(scheduleFitSummaries);
