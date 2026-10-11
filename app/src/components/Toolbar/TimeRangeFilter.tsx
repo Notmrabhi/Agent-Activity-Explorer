@@ -171,8 +171,8 @@ export function TimeRangeFilter({ from, to, onChange }: TimeRangeFilterProps) {
         ref={anchorRef}
         label="Time"
         valueLabel={label || undefined}
-        // "→" reads as "right arrow": give screen readers words.
-        aria-label={active ? `Time: ${label.replace(' → ', ' to ')} UTC` : undefined}
+        // The name starts with the visible text so voice control can target it (WCAG 2.5.3).
+        aria-label={active ? `Time: ${label} UTC` : undefined}
         open={open}
         aria-controls={popoverId}
         onClick={() => (open ? setOpen(false) : openPopover())}
