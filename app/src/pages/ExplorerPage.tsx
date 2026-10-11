@@ -23,7 +23,12 @@ import { ShortcutsDialog } from '../components/ShortcutsDialog'
 import { Toolbar } from '../components/Toolbar/Toolbar'
 import { Button } from '../components/ui/Button'
 import { InboxIcon } from '../components/ui/icons'
-import { useEventDetail, useEventList, useHistogram, useNewestEventTime } from '../hooks/useEvents'
+import {
+  useEventDetail,
+  useEventList,
+  useNewestEventTime,
+  useStatusHistogram,
+} from '../hooks/useEvents'
 import { useExplorerUrlState } from '../hooks/useExplorerUrlState'
 import { useLiveEvents } from '../hooks/useLiveEvents'
 import { DOCKED_PANEL_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
@@ -108,7 +113,7 @@ export default function ExplorerPage() {
   } = url
   const list = useEventList(filters)
   const newestTime = useNewestEventTime()
-  const histogram = useHistogram(filters, newestTime.data)
+  const histogram = useStatusHistogram(filters, newestTime.data)
   const { rows, total } = list
   const docked = useMediaQuery(DOCKED_PANEL_QUERY)
   const listSlow = useSlowFlag(list.isFetching)
@@ -405,7 +410,7 @@ export default function ExplorerPage() {
               bucket={histogram.bucket}
               isLoading={histogram.isPending}
               isError={histogram.isError}
-              isStale={histogram.isPlaceholderData}
+              isStale={histogram.isStale}
               onRetry={() => void histogram.refetch()}
               onSelectRange={setTimeRange}
             />

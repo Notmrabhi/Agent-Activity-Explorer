@@ -1,19 +1,23 @@
-import { useRef, useState, type PointerEvent } from 'react'
-import type { HistogramBucket, HistogramBucketSize, TimeRange } from '../../api/types'
+import { useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import type { HistogramBucketSize, TimeRange } from '../../api/types'
 import { formatCount } from '../../lib/format'
-import { BUCKET_MS, rangeForBuckets } from '../../lib/histogram'
+import { BUCKET_MS, rangeForBuckets, type StatusBucket } from '../../lib/histogram'
 import { formatAnchor } from '../../lib/timeRange'
 import { Skeleton } from '../feedback/Skeleton'
 import { Button } from '../ui/Button'
 
 export interface EventsChartProps {
-  buckets: HistogramBucket[]
+  buckets: StatusBucket[]
   bucket: HistogramBucketSize
   isLoading: boolean
   isError: boolean
   isStale: boolean
   onRetry: () => void
   onSelectRange: (range: TimeRange) => void
+  /** Plot height in px. */
+  height?: number
+  /** Shown before the caption, e.g. a section heading. */
+  title?: ReactNode
 }
 
 const BUCKET_LABEL: Record<HistogramBucketSize, string> = {
@@ -22,9 +26,13 @@ const BUCKET_LABEL: Record<HistogramBucketSize, string> = {
   '1h': 'per hour',
 }
 
-const CHART_HEIGHT = 56
+const SEGMENTS = [
+  { key: 'ok', label: 'OK', className: 'fill-ok', swatch: 'bg-ok' },
+  { key: 'blocked', label: 'Blocked', className: 'fill-blocked', swatch: 'bg-blocked' },
+  { key: 'error', label: 'Error', className: 'fill-error', swatch: 'bg-error' },
+] as const
 
-/** Events over time for the current filters. Click a bar or drag across bars to filter the list. */
+/** Events over time, stacked by status. Click a bar or drag across bars to filter by time. */
 export function EventsChart({
   buckets,
   bucket,
@@ -33,13 +41,21 @@ export function EventsChart({
   isStale,
   onRetry,
   onSelectRange,
+  height = 56,
+  title,
 }: EventsChartProps) {
   const plotRef = useRef<HTMLDivElement>(null)
   const [hover, setHover] = useState<number | null>(null)
   const [drag, setDrag] = useState<{ anchor: number; current: number } | null>(null)
 
   if (buckets.length === 0) {
-    if (isLoading) return <Skeleton className="h-[88px] w-full rounded-lg" />
+    if (isLoading) {
+      return (
+        <div style={{ height: height + 40 }}>
+          <Skeleton className="h-full w-full rounded-lg" />
+        </div>
+      )
+    }
     if (isError) {
       return (
         <div className="flex h-12 items-center gap-3 rounded-lg border border-border px-3 text-sm">
@@ -53,8 +69,8 @@ export function EventsChart({
     return null
   }
 
-  const max = Math.max(1, ...buckets.map((item) => item.count))
-  const total = buckets.reduce((sum, item) => sum + item.count, 0)
+  const max = Math.max(1, ...buckets.map((item) => item.total))
+  const total = buckets.reduce((sum, item) => sum + item.total, 0)
   const bucketMs = BUCKET_MS[bucket]
 
   const indexAt = (clientX: number): number => {
@@ -77,7 +93,12 @@ export function EventsChart({
   }
   const onPointerUp = () => {
     if (!drag) return
-    const range = rangeForBuckets(buckets, drag.anchor, drag.current, bucketMs)
+    const range = rangeForBuckets(
+      buckets.map((item) => ({ t: item.t, count: item.total })),
+      drag.anchor,
+      drag.current,
+      bucketMs,
+    )
     setDrag(null)
     if (range) onSelectRange(range)
   }
@@ -92,12 +113,15 @@ export function EventsChart({
     <figure
       className={`m-0 rounded-lg border border-border bg-surface px-3 pt-2 pb-1.5 transition-opacity duration-(--duration-fast) ${isStale ? 'opacity-60' : ''}`}
     >
-      <figcaption className="flex h-5 items-center justify-between gap-3 text-xs text-muted">
-        <span>
+      <figcaption className="flex min-h-5 flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+        {title}
+        <span className="min-w-0 flex-1">
           {shown ? (
             <>
               <span className="font-mono text-fg">{formatAnchor(shown.t)}</span> ·{' '}
-              <span className="font-mono text-fg">{formatCount(shown.count)}</span> events
+              <span className="font-mono text-fg">{formatCount(shown.total)}</span> events ·{' '}
+              {formatCount(shown.ok)} OK · {formatCount(shown.blocked)} blocked ·{' '}
+              {formatCount(shown.error)} errors
             </>
           ) : (
             <>
@@ -106,13 +130,20 @@ export function EventsChart({
             </>
           )}
         </span>
-        <span className="hidden sm:inline">Click or drag to filter by time</span>
+        <span className="hidden items-center gap-3 sm:flex" aria-hidden="true">
+          {SEGMENTS.map((segment) => (
+            <span key={segment.key} className="inline-flex items-center gap-1.5">
+              <span className={`size-2 rounded-xs ${segment.swatch}`} />
+              {segment.label}
+            </span>
+          ))}
+        </span>
       </figcaption>
 
       <div
         ref={plotRef}
         className="relative mt-1 cursor-crosshair touch-none select-none"
-        style={{ height: CHART_HEIGHT }}
+        style={{ height }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -122,7 +153,7 @@ export function EventsChart({
         <svg
           aria-hidden="true"
           className="block h-full w-full"
-          viewBox={`0 0 ${buckets.length} ${CHART_HEIGHT}`}
+          viewBox={`0 0 ${buckets.length} ${height}`}
           preserveAspectRatio="none"
         >
           {selectedFrom !== null && selectedTo !== null && (
@@ -130,21 +161,31 @@ export function EventsChart({
               x={selectedFrom}
               y={0}
               width={selectedTo - selectedFrom + 1}
-              height={CHART_HEIGHT}
+              height={height}
               className="fill-accent-soft"
             />
           )}
           {buckets.map((item, i) => {
-            const height = item.count === 0 ? 0 : Math.max(1, (item.count / max) * CHART_HEIGHT)
+            let y = height
             return (
-              <rect
-                key={item.t}
-                x={i + 0.1}
-                y={CHART_HEIGHT - height}
-                width={0.8}
-                height={height}
-                className={i === hover ? 'fill-accent-hover' : 'fill-accent'}
-              />
+              <g key={item.t} opacity={hover === null || hover === i ? 1 : 0.75}>
+                {SEGMENTS.map((segment) => {
+                  const value = item[segment.key]
+                  if (value === 0) return null
+                  const h = Math.max(0.5, (value / max) * height)
+                  y -= h
+                  return (
+                    <rect
+                      key={segment.key}
+                      x={i + 0.1}
+                      y={y}
+                      width={0.8}
+                      height={h}
+                      className={segment.className}
+                    />
+                  )
+                })}
+              </g>
             )
           })}
         </svg>
@@ -152,6 +193,7 @@ export function EventsChart({
 
       <div className="mt-1 flex justify-between font-mono text-[11px] text-subtle">
         <span>{first ? formatAnchor(first.t) : ''}</span>
+        <span className="hidden sm:inline">Click or drag to filter by time</span>
         <span>{last ? formatAnchor(last.t) : ''}</span>
       </div>
       <p className="sr-only">

@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { BUCKET_MS, chooseBucket, fillGaps, rangeForBuckets } from './histogram'
+import {
+  agentRows,
+  BUCKET_MS,
+  bucketReady,
+  chooseBucket,
+  fillGaps,
+  mergeStatusHistograms,
+  previousRange,
+  rangeForBuckets,
+  rate,
+  rateDelta,
+  sumStatuses,
+} from './histogram'
 
 const HOUR = BUCKET_MS['1h']
 
@@ -80,5 +92,111 @@ describe('rangeForBuckets', () => {
 
   it('returns null outside the buckets', () => {
     expect(rangeForBuckets(buckets, 0, 9, HOUR)).toBeNull()
+  })
+})
+
+describe('mergeStatusHistograms', () => {
+  it('puts each status on one even axis and adds a total', () => {
+    const merged = mergeStatusHistograms(
+      {
+        ok: [{ t: '2026-10-07T12:00:00Z', count: 10 }],
+        error: [{ t: '2026-10-07T14:00:00Z', count: 2 }],
+      },
+      HOUR,
+    )
+    expect(merged.map((b) => [b.ok, b.blocked, b.error, b.total])).toEqual([
+      [10, 0, 0, 10],
+      [0, 0, 0, 0],
+      [0, 0, 2, 2],
+    ])
+  })
+
+  it('uses a shared axis when given, so several agents line up', () => {
+    const axis = [
+      { t: '2026-10-07T12:00:00Z', count: 0 },
+      { t: '2026-10-07T15:00:00Z', count: 0 },
+    ]
+    const merged = mergeStatusHistograms(
+      { ok: [{ t: '2026-10-07T13:00:00Z', count: 4 }] },
+      HOUR,
+      axis,
+    )
+    expect(merged.map((b) => b.total)).toEqual([0, 4, 0, 0])
+  })
+})
+
+describe('totals and rates', () => {
+  const buckets = mergeStatusHistograms(
+    {
+      ok: [{ t: '2026-10-07T12:00:00Z', count: 90 }],
+      blocked: [{ t: '2026-10-07T12:00:00Z', count: 4 }],
+      error: [{ t: '2026-10-07T12:00:00Z', count: 6 }],
+    },
+    HOUR,
+  )
+
+  it('sums every status', () => {
+    expect(sumStatuses(buckets)).toEqual({ total: 100, ok: 90, blocked: 4, error: 6 })
+  })
+
+  it('gives a rate in percent, or null with nothing to divide', () => {
+    expect(rate(6, 100)).toBe(6)
+    expect(rate(0, 0)).toBeNull()
+  })
+
+  it('gives the change in points, or null when either side is unknown', () => {
+    expect(rateDelta(8, 6)).toBe(2)
+    expect(rateDelta(null, 6)).toBeNull()
+  })
+})
+
+describe('previousRange', () => {
+  it('is the same length, just before', () => {
+    expect(previousRange('2026-10-08T12:00:00.000Z', '2026-10-08T18:00:00.000Z')).toEqual({
+      from: '2026-10-08T06:00:00.000Z',
+      to: '2026-10-08T12:00:00.000Z',
+    })
+  })
+
+  it('needs both ends and a positive length', () => {
+    expect(previousRange(null, '2026-10-08T18:00:00.000Z')).toBeNull()
+    expect(previousRange('2026-10-08T12:00:00.000Z', null)).toBeNull()
+    expect(previousRange('2026-10-08T12:00:00.000Z', '2026-10-08T12:00:00.000Z')).toBeNull()
+  })
+})
+
+describe('bucketReady', () => {
+  it('waits for the newest event only for an open-ended range', () => {
+    expect(bucketReady({ from: null, to: null }, undefined)).toBe(true)
+    expect(
+      bucketReady({ from: '2026-10-08T12:00:00Z', to: '2026-10-08T13:00:00Z' }, undefined),
+    ).toBe(true)
+    expect(bucketReady({ from: '2026-10-08T12:00:00Z', to: null }, undefined)).toBe(false)
+    expect(bucketReady({ from: '2026-10-08T12:00:00Z', to: null }, '2026-10-10T08:00:00Z')).toBe(
+      true,
+    )
+  })
+})
+
+describe('agentRows', () => {
+  const row = (ok: number, error: number) =>
+    mergeStatusHistograms(
+      {
+        ok: [{ t: '2026-10-07T12:00:00Z', count: ok }],
+        error: [{ t: '2026-10-07T12:00:00Z', count: error }],
+      },
+      HOUR,
+    )
+
+  it('sorts by most errors, then most events, then name', () => {
+    const rows = agentRows(
+      new Map([
+        ['quiet', row(10, 1)],
+        ['noisy', row(10, 5)],
+        ['busy', row(50, 1)],
+      ]),
+    )
+    expect(rows.map((r) => r.agent)).toEqual(['noisy', 'busy', 'quiet'])
+    expect(rows[0]).toMatchObject({ total: 15, error: 5, trend: [15], errorTrend: [5] })
   })
 })
