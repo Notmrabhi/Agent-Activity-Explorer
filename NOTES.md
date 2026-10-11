@@ -24,6 +24,19 @@ I avoided automatically refetching every loaded page because the API can fail an
 
 The accessibility scan still reports issues with the copy buttons' accessible names and a page landmark. A timeout during a large response can show a JSON parsing error instead of a timeout message. Timestamp validation could also be stricter because I currently check that the value is a string rather than verifying that it's a valid date. The chart's range selection works with mouse and touch only (keyboard users use the Time filter), and the chart doesn't update in live mode.
 
+## Beyond the brief (`additions` branch)
+
+The submission is on `main`. After finishing it, I kept going on a separate branch, `additions`, so the main work stays exactly as asked.
+
+My thought: someone responsible for these agents first wants to see the whole picture at once, and only then dig into single events. The list answers "what happened in this call?", but not "is something wrong right now, since when, and which agent?". So I added an **Overview** tab next to **Events**:
+
+- Health cards: how many events, and what share were errors, blocked or OK, compared with the period before (for example "errors up 1.2 points vs the previous 6 hours").
+- The chart split by status, so you can see when errors started.
+- A table of agents, most errors first, so the agent causing trouble stands out.
+- Every card and row opens the Events list with exactly those filters, so you go from the big picture to the single event in one click.
+
+Both tabs share the same search and filters in the URL. I only show numbers the API can really give: there is no tool, policy or latency summary in the API, so I didn't fake one. To try it: `git switch additions`, then run the app as usual and open `/overview`.
+
 ## How I used AI
 
 How I worked, step by step:
