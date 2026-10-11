@@ -4,6 +4,7 @@ import {
   useEffectEvent,
   useId,
   useRef,
+  useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
   type PointerEvent,
@@ -38,8 +39,11 @@ import {
 } from '../ui/icons'
 import { Kbd } from '../ui/Kbd'
 import { StatusBadge } from '../ui/StatusBadge'
+import { toPrettyJson } from '../../lib/json'
 import { JsonView } from './JsonView'
 import { PanelSection } from './PanelSection'
+import { ReadableView } from './ReadableView'
+import { ViewSwitch, type PayloadView } from './ViewSwitch'
 
 export interface DetailPanelProps {
   eventId: string
@@ -85,6 +89,8 @@ export function DetailPanel({
   id,
 }: DetailPanelProps) {
   const query = useEventDetail(eventId)
+  // Kept while stepping through events: it's a reading preference.
+  const [view, setView] = useState<PayloadView>('formatted')
   const slow = useSlowFlag(query.isFetching)
   const titleId = useId()
   const titleRef = useRef<HTMLHeadingElement>(null)
@@ -161,6 +167,13 @@ export function DetailPanel({
   }
 
   const policyCount = detail?.policyMatches.length ?? 0
+  const copyIcon = (value: unknown, label: string) => (
+    <CopyButton
+      value={() => toPrettyJson(value) ?? ''}
+      label={`Copy ${label} JSON`}
+      variant="ghost"
+    />
+  )
   const header = (
     <header className="@container flex-none border-b border-border px-5 pt-2.5 pb-3.5">
       <div className="flex items-center gap-3">
@@ -370,25 +383,44 @@ export function DetailPanel({
           title="Couldn’t load this event"
         />
       )}
+      {showPayload && <ViewSwitch value={view} onChange={setView} />}
       {showPayload && (
-        <PanelSection title="Arguments">
+        <PanelSection
+          title="Arguments"
+          actions={view === 'formatted' && detail ? copyIcon(detail.args, 'Arguments') : undefined}
+        >
           {detail ? (
-            <JsonView value={detail.args} label="Arguments" />
+            view === 'formatted' ? (
+              <ReadableView value={detail.args} />
+            ) : (
+              <JsonView value={detail.args} label="Arguments" />
+            )
           ) : (
             <Skeleton className="h-24 w-full rounded-md" />
           )}
         </PanelSection>
       )}
       {showPayload && (
-        <PanelSection title="Result">
+        <PanelSection
+          title="Result"
+          actions={view === 'formatted' && detail ? copyIcon(detail.result, 'Result') : undefined}
+        >
           {detail ? (
-            <JsonView value={detail.result} label="Result" />
+            view === 'formatted' ? (
+              <ReadableView value={detail.result} />
+            ) : (
+              <JsonView value={detail.result} label="Result" />
+            )
           ) : (
             <Skeleton className="h-16 w-full rounded-md" />
           )}
         </PanelSection>
       )}
-      {(head || query.isPending) && <PanelSection title="Metadata">{metadataSection}</PanelSection>}
+      {(head || query.isPending) && (
+        <PanelSection title="Metadata" defaultOpen={false}>
+          {metadataSection}
+        </PanelSection>
+      )}
     </>
   )
 
