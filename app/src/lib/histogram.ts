@@ -141,32 +141,48 @@ export function rateDelta(now: number | null, before: number | null): number | n
 export interface AgentRow {
   agent: string
   total: number
-  ok: number
-  blocked: number
   error: number
-  /** Events per bucket and errors per bucket, on the same time axis as `buckets`. */
+  /** Events per bucket and errors per bucket, on the shared time axis. */
   trend: number[]
   errorTrend: number[]
 }
 
-/** One row per agent, sorted by most errors, then most events. */
-export function agentRows(byAgent: ReadonlyMap<string, readonly StatusBucket[]>): AgentRow[] {
-  const rows: AgentRow[] = []
-  for (const [agent, buckets] of byAgent) {
-    const totals = sumStatuses(buckets)
-    rows.push({
-      agent,
-      total: totals.total,
-      ok: totals.ok,
-      blocked: totals.blocked,
-      error: totals.error,
-      trend: buckets.map((bucket) => bucket.total),
-      errorTrend: buckets.map((bucket) => bucket.error),
-    })
+/** Counts on a time axis: one number per axis bucket, 0 where the API left a bucket out. */
+export function alignToAxis(
+  buckets: readonly HistogramBucket[],
+  axis: readonly { t: string }[],
+): number[] {
+  const counts = new Map(buckets.map((bucket) => [Date.parse(bucket.t), bucket.count]))
+  return axis.map((point) => counts.get(Date.parse(point.t)) ?? 0)
+}
+
+/**
+ * One agent's row from two histograms: all its events, and its errors (null when the status
+ * filter already decides the errors: all of them, or none).
+ */
+export function agentRow(
+  agent: string,
+  all: readonly HistogramBucket[],
+  errors: readonly HistogramBucket[] | null,
+  errorsAreAll: boolean,
+  axis: readonly { t: string }[],
+): AgentRow {
+  const sum = (buckets: readonly HistogramBucket[]) =>
+    buckets.reduce((total, bucket) => total + bucket.count, 0)
+  const trend = alignToAxis(all, axis)
+  const errorTrend = errors ? alignToAxis(errors, axis) : errorsAreAll ? trend : axis.map(() => 0)
+  return {
+    agent,
+    total: sum(all),
+    error: errors ? sum(errors) : errorsAreAll ? sum(all) : 0,
+    trend,
+    errorTrend,
   }
-  return rows.sort(
-    (a, b) => b.error - a.error || b.total - a.total || a.agent.localeCompare(b.agent),
-  )
+}
+
+/** Most errors first, then most events, then by name. */
+export function compareAgentRows(a: AgentRow, b: AgentRow): number {
+  return b.error - a.error || b.total - a.total || a.agent.localeCompare(b.agent)
 }
 
 /**

@@ -18,6 +18,7 @@ import {
   useStatusHistogram,
 } from '../hooks/useEvents'
 import { useExplorerUrlState } from '../hooks/useExplorerUrlState'
+import { useInView } from '../hooks/useInView'
 import { useSlowFlag } from '../hooks/useSlowFlag'
 import { bucketReady, previousRange, sumStatuses } from '../lib/histogram'
 import { hasActiveFilters, serializeExplorerParams } from '../lib/urlState'
@@ -60,11 +61,16 @@ export default function OverviewPage() {
   )
 
   const agents = useAgents()
+  const [agentsRef, agentsInView] = useInView<HTMLDivElement>()
   const breakdown = useAgentBreakdown(
     filters,
     agents.data ?? [],
     status.bucket,
-    bucketReady(filters, newest.data),
+    // Only once the table is on screen, and after the cards and chart: the browser runs ~6
+    // requests at a time, and the agent requests would otherwise queue ahead of the 3 that
+    // answer "is something wrong?".
+    agentsInView && bucketReady(filters, newest.data) && !status.isPending,
+    status.buckets,
   )
 
   const totals = status.isPending ? null : sumStatuses(status.buckets)
@@ -135,17 +141,19 @@ export default function OverviewPage() {
           onSelectRange={setTimeRange}
           height={120}
         />
-        <AgentTable
-          rows={breakdown.rows}
-          isLoading={breakdown.isPending || agents.isPending}
-          isError={breakdown.isError || agents.isError}
-          isStale={breakdown.isStale}
-          onRetry={() => {
-            if (agents.isError) void agents.refetch()
-            breakdown.refetch()
-          }}
-          hrefFor={(agent) => eventsHref({ ...filters, agents: [agent] })}
-        />
+        <div ref={agentsRef}>
+          <AgentTable
+            items={breakdown.items}
+            agentsLoading={agents.isPending}
+            agentsFailed={agents.isError}
+            allFailed={breakdown.allFailed}
+            onRetry={() => {
+              if (agents.isError) void agents.refetch()
+              breakdown.retryAll()
+            }}
+            hrefFor={(agent) => eventsHref({ ...filters, agents: [agent] })}
+          />
+        </div>
       </div>
     )
   }

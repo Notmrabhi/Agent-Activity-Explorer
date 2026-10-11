@@ -27,6 +27,7 @@ function makeEvents(agent: string, count: number, errors: number, blocked: numbe
 const EVENTS = [...makeEvents('alpha', 120, 6, 6), ...makeEvents('beta', 80, 16, 4)]
 
 let failAgentHistograms = false
+let failAgent: string | null = null
 
 function matching(url: URL): EventSummary[] {
   const agents = url.searchParams.getAll('agent')
@@ -45,7 +46,10 @@ function matching(url: URL): EventSummary[] {
 const server = setupServer(
   http.get(`${API_BASE_URL}/events/histogram`, ({ request }) => {
     const url = new URL(request.url)
-    if (failAgentHistograms && url.searchParams.has('agent')) {
+    if (
+      (failAgentHistograms && url.searchParams.has('agent')) ||
+      (failAgent !== null && url.searchParams.get('agent') === failAgent)
+    ) {
       return HttpResponse.json({ error: 'internal server error' }, { status: 500 })
     }
     const counts = new Map<string, number>()
@@ -83,6 +87,7 @@ beforeAll(() => {
 afterAll(() => server.close())
 beforeEach(() => {
   failAgentHistograms = false
+  failAgent = null
 })
 afterEach(() => server.resetHandlers())
 
@@ -145,6 +150,22 @@ describe('OverviewPage', () => {
     renderOverview()
     await screen.findByText('Couldn’t load the agent breakdown', undefined, { timeout: 8000 })
     expect(cards()).toHaveTextContent('200')
+  }, 15_000)
+
+  it('shows the other agents when one agent fails, with a retry on its row', async () => {
+    failAgent = 'beta'
+    renderOverview()
+    const table = await screen.findByRole('table')
+    const betaRow = await within(table).findByText('Couldn’t load this agent.', undefined, {
+      timeout: 8000,
+    })
+    expect(
+      within(betaRow.closest('tr') as HTMLElement).getByRole('button', { name: 'Retry' }),
+    ).toBeInTheDocument()
+    const alpha = within(table)
+      .getByRole('rowheader', { name: /alpha/ })
+      .closest('tr') as HTMLElement
+    expect(alpha).toHaveTextContent('120')
   }, 15_000)
 
   it('keeps filters when switching to Events, but not the open event', async () => {

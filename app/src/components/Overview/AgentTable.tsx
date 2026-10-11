@@ -1,15 +1,19 @@
 import { Link } from 'react-router'
+import type { AgentItem } from '../../hooks/useEvents'
 import { formatCount } from '../../lib/format'
 import { rate, type AgentRow } from '../../lib/histogram'
 import { ErrorState } from '../feedback/ErrorState'
 import { Skeleton } from '../feedback/Skeleton'
 import { AgentAvatar } from '../ui/AgentAvatar'
+import { Button } from '../ui/Button'
 
 export interface AgentTableProps {
-  rows: AgentRow[]
-  isLoading: boolean
-  isError: boolean
-  isStale: boolean
+  items: AgentItem[]
+  /** The agent list itself is still loading or failed. */
+  agentsLoading: boolean
+  agentsFailed: boolean
+  /** Every agent failed: show one error for the section instead of a row each. */
+  allFailed: boolean
   onRetry: () => void
   /** Link to the Events view filtered to one agent. */
   hrefFor: (agent: string) => string
@@ -52,17 +56,70 @@ function Sparkline({ row }: { row: AgentRow }) {
   )
 }
 
-/** "Which agent?": every agent's volume and error and block rates, most errors first. */
+function AgentCell({ agent, href, updating }: { agent: string; href: string; updating: boolean }) {
+  return (
+    <th scope="row" className="px-4 py-1.5 text-left font-medium">
+      <Link
+        to={href}
+        className="inline-flex items-center gap-2 rounded-sm whitespace-nowrap hover:text-accent-text"
+      >
+        <AgentAvatar name={agent} />
+        {agent}
+      </Link>
+      {updating && <span className="ml-2 text-xs font-normal text-subtle">updating…</span>}
+    </th>
+  )
+}
+
+function NumberCells({ row }: { row: AgentRow }) {
+  const errorRate = rate(row.error, row.total)
+  const high = errorRate !== null && errorRate >= HIGH_ERROR_RATE
+  return (
+    <>
+      <td className="px-4 py-1.5 text-right font-mono">{formatCount(row.total)}</td>
+      <td className="px-4 py-1.5 text-right font-mono whitespace-nowrap">
+        <span className={high ? 'font-semibold text-error' : ''}>
+          {errorRate === null ? '—' : `${errorRate.toFixed(1)}%`}
+        </span>{' '}
+        <span className="text-subtle">({formatCount(row.error)})</span>
+      </td>
+      <td className="hidden px-4 py-1.5 md:table-cell">
+        <Sparkline row={row} />
+      </td>
+    </>
+  )
+}
+
+/**
+ * "Which agent?": every agent's volume and error rate, most errors first. Each row
+ * fills in on its own; until then it shows the previous numbers dimmed, or a placeholder.
+ */
 export function AgentTable({
-  rows,
-  isLoading,
-  isError,
-  isStale,
+  items,
+  agentsLoading,
+  agentsFailed,
+  allFailed,
   onRetry,
   hrefFor,
 }: AgentTableProps) {
+  // Agents with no events for these filters add nothing to the comparison.
+  const shown = items.filter((item) => item.state !== 'ready' || item.row.total > 0)
+  const loading = items.filter((item) => item.state === 'loading').length
+
   let body
-  if (rows.length === 0 && isLoading) {
+  if (agentsFailed || allFailed) {
+    body = (
+      <div className="p-4">
+        <ErrorState
+          compact
+          error={undefined}
+          title="Couldn’t load the agent breakdown"
+          message="The requests failed after retrying. The cards and chart above are not affected."
+          onRetry={onRetry}
+        />
+      </div>
+    )
+  } else if (items.length === 0 && agentsLoading) {
     body = (
       <div className="flex flex-col gap-2 p-4" aria-busy="true">
         {[0, 1, 2, 3, 4].map((i) => (
@@ -70,24 +127,12 @@ export function AgentTable({
         ))}
       </div>
     )
-  } else if (rows.length === 0 && isError) {
-    body = (
-      <div className="p-4">
-        <ErrorState
-          compact
-          error={undefined}
-          title="Couldn’t load the agent breakdown"
-          message="Some requests failed after retrying. The cards and chart above are not affected."
-          onRetry={onRetry}
-        />
-      </div>
-    )
-  } else if (rows.length === 0) {
+  } else if (shown.length === 0) {
     body = <p className="p-4 text-sm text-muted">No agents have events for these filters.</p>
   } else {
     body = (
       <div className="overflow-x-auto">
-        <table className={`w-full text-sm ${isStale ? 'opacity-60' : ''}`}>
+        <table className="w-full text-sm" aria-busy={loading > 0}>
           <thead className="text-xs tracking-wide text-muted uppercase">
             <tr className="text-left">
               <th scope="col" className="px-4 py-2 font-medium">
@@ -99,46 +144,40 @@ export function AgentTable({
               <th scope="col" className="px-4 py-2 text-right font-medium" aria-sort="descending">
                 Errors
               </th>
-              <th scope="col" className="px-4 py-2 text-right font-medium">
-                Blocked
-              </th>
               <th scope="col" className="hidden px-4 py-2 font-medium md:table-cell">
                 Trend <span className="sr-only">(events and errors over the period)</span>
               </th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
-              const errorRate = rate(row.error, row.total)
-              const blockedRate = rate(row.blocked, row.total)
-              const high = errorRate !== null && errorRate >= HIGH_ERROR_RATE
-              return (
-                <tr key={row.agent} className="border-t border-border hover:bg-hover">
-                  <th scope="row" className="px-4 py-1.5 text-left font-medium">
-                    <Link
-                      to={hrefFor(row.agent)}
-                      className="inline-flex items-center gap-2 rounded-sm whitespace-nowrap hover:text-accent-text"
-                    >
-                      <AgentAvatar name={row.agent} />
-                      {row.agent}
-                    </Link>
-                  </th>
-                  <td className="px-4 py-1.5 text-right font-mono">{formatCount(row.total)}</td>
-                  <td className="px-4 py-1.5 text-right font-mono whitespace-nowrap">
-                    <span className={high ? 'font-semibold text-error' : ''}>
-                      {errorRate === null ? '—' : `${errorRate.toFixed(1)}%`}
-                    </span>{' '}
-                    <span className="text-subtle">({formatCount(row.error)})</span>
+            {shown.map((item) => (
+              <tr
+                key={item.agent}
+                className={`border-t border-border hover:bg-hover ${item.state === 'ready' ? '' : 'text-muted'}`}
+              >
+                <AgentCell
+                  agent={item.agent}
+                  href={hrefFor(item.agent)}
+                  updating={item.state === 'loading' && item.row !== null}
+                />
+                {item.state === 'error' ? (
+                  <td colSpan={3} className="px-4 py-1.5">
+                    <span className="inline-flex items-center gap-3 text-sm">
+                      <span className="text-error">Couldn’t load this agent.</span>
+                      <Button size="sm" variant="ghost" onClick={item.retry}>
+                        Retry
+                      </Button>
+                    </span>
                   </td>
-                  <td className="px-4 py-1.5 text-right font-mono text-muted">
-                    {blockedRate === null ? '—' : `${blockedRate.toFixed(1)}%`}
+                ) : item.row ? (
+                  <NumberCells row={item.row} />
+                ) : (
+                  <td colSpan={3} className="px-4 py-1.5">
+                    <Skeleton className="h-4 w-full" />
                   </td>
-                  <td className="hidden px-4 py-1.5 md:table-cell">
-                    <Sparkline row={row} />
-                  </td>
-                </tr>
-              )
-            })}
+                )}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -150,15 +189,18 @@ export function AgentTable({
       aria-labelledby="agents-heading"
       className="rounded-lg border border-border bg-surface"
     >
-      <div className="flex items-baseline gap-3 border-b border-border px-4 py-3">
+      <div className="flex flex-wrap items-baseline gap-x-3 border-b border-border px-4 py-3">
         <h2 id="agents-heading" className="text-sm font-semibold">
           Which agent
         </h2>
-        {rows.length > 0 && (
+        {shown.length > 0 && (
           <span className="text-sm text-muted">
-            {rows.length} {rows.length === 1 ? 'agent' : 'agents'} · most errors first
+            {shown.length} {shown.length === 1 ? 'agent' : 'agents'} · most errors first
           </span>
         )}
+        <span role="status" className="text-sm text-subtle">
+          {loading > 0 ? `Loading ${loading} of ${items.length}…` : ''}
+        </span>
       </div>
       {body}
     </section>

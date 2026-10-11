@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  agentRows,
+  agentRow,
   BUCKET_MS,
   bucketReady,
   chooseBucket,
+  compareAgentRows,
   fillGaps,
   mergeStatusHistograms,
   previousRange,
@@ -178,25 +179,51 @@ describe('bucketReady', () => {
   })
 })
 
-describe('agentRows', () => {
-  const row = (ok: number, error: number) =>
-    mergeStatusHistograms(
-      {
-        ok: [{ t: '2026-10-07T12:00:00Z', count: ok }],
-        error: [{ t: '2026-10-07T12:00:00Z', count: error }],
-      },
-      HOUR,
-    )
+describe('agentRow', () => {
+  const axis = [
+    { t: '2026-10-07T12:00:00.000Z' },
+    { t: '2026-10-07T13:00:00.000Z' },
+    { t: '2026-10-07T14:00:00.000Z' },
+  ]
+  const all = [
+    { t: '2026-10-07T12:00:00Z', count: 10 },
+    { t: '2026-10-07T14:00:00Z', count: 6 },
+  ]
+
+  it('sums both histograms and lines the trends up on the shared axis', () => {
+    const row = agentRow('alpha', all, [{ t: '2026-10-07T14:00:00Z', count: 2 }], false, axis)
+    expect(row).toEqual({
+      agent: 'alpha',
+      total: 16,
+      error: 2,
+      trend: [10, 0, 6],
+      errorTrend: [0, 0, 2],
+    })
+  })
+
+  it('counts every event as an error under an Error status filter, and none under the others', () => {
+    expect(agentRow('alpha', all, null, true, axis)).toMatchObject({
+      error: 16,
+      errorTrend: [10, 0, 6],
+    })
+    expect(agentRow('alpha', all, null, false, axis)).toMatchObject({
+      error: 0,
+      errorTrend: [0, 0, 0],
+    })
+  })
 
   it('sorts by most errors, then most events, then name', () => {
-    const rows = agentRows(
-      new Map([
-        ['quiet', row(10, 1)],
-        ['noisy', row(10, 5)],
-        ['busy', row(50, 1)],
-      ]),
-    )
+    const rows = [
+      agentRow('quiet', all, [{ t: '2026-10-07T12:00:00Z', count: 1 }], false, axis),
+      agentRow('noisy', all, [{ t: '2026-10-07T12:00:00Z', count: 5 }], false, axis),
+      agentRow(
+        'busy',
+        [...all, { t: '2026-10-07T13:00:00Z', count: 9 }],
+        [{ t: '2026-10-07T12:00:00Z', count: 1 }],
+        false,
+        axis,
+      ),
+    ].sort(compareAgentRows)
     expect(rows.map((r) => r.agent)).toEqual(['noisy', 'busy', 'quiet'])
-    expect(rows[0]).toMatchObject({ total: 15, error: 5, trend: [15], errorTrend: [5] })
   })
 })
