@@ -37,6 +37,8 @@ My thought: someone responsible for these agents first wants to see the whole pi
 
 Both tabs share the same search and filters in the URL. I only show numbers the API can really give: there is no tool, policy or latency summary in the API, so I didn't fake one. To try it: `git switch additions`, then run the app as usual and open `/overview`.
 
+One honest limit: the agent table is slow to fill. As a user, the Overview is great for a quick look at everything at once, but you will see the agent rows load one by one over a few seconds. That's because the API can't count per agent in one call, so the page has to ask once for each agent's events and once for its errors (about 24 calls for 12 agents). To keep it usable, the cards and chart load first, the agent requests go 4 at a time, each row appears as soon as its data arrives, and old numbers stay on screen (marked "updating") while new ones load. This is fine for 12 agents, but with hundreds of agents it would be too slow, the real fix would be an API endpoint that returns the totals for all agents in one call.
+
 ## How I used AI
 
 How I worked, step by step:
