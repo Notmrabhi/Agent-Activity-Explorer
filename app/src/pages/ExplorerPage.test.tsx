@@ -55,6 +55,15 @@ function eventsHandler({ request }: { request: Request }) {
 
 const server = setupServer(
   http.get(`${API_BASE_URL}/events`, eventsHandler),
+  http.get(`${API_BASE_URL}/events/histogram`, () => {
+    const counts = new Map<string, number>()
+    for (const event of EVENTS) {
+      const hour = `${event.timestamp.slice(0, 13)}:00:00Z`
+      counts.set(hour, (counts.get(hour) ?? 0) + 1)
+    }
+    const buckets = [...counts].map(([t, count]) => ({ t, count }))
+    return HttpResponse.json({ bucket: '1h', buckets })
+  }),
   http.get(`${API_BASE_URL}/events/:id`, ({ params }) => {
     const event = EVENTS.find((item) => item.id === params.id)
     if (!event) return HttpResponse.json({ error: 'not found' }, { status: 404 })

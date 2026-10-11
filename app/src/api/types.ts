@@ -49,4 +49,18 @@ export interface EventFilters {
 
 export type TimeRange = Pick<EventFilters, 'from' | 'to'>
 
+export type HistogramBucketSize = '1m' | '5m' | '1h'
+
+export interface HistogramBucket {
+  /** Bucket start, ISO UTC. */
+  t: string
+  count: number
+}
+
+/** GET /events/histogram. Empty buckets are left out. */
+export interface Histogram {
+  bucket: HistogramBucketSize
+  buckets: HistogramBucket[]
+}
+
 export const EMPTY_FILTERS: EventFilters = { q: '', agents: [], status: null, from: null, to: null }

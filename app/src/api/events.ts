@@ -1,7 +1,14 @@
 // Endpoint functions. Each takes an AbortSignal so cancelled queries cancel their request.
 import { apiGet } from './client'
-import { isEventDetail, isEventsPage, isStringArray } from './guards'
-import type { EventDetail, EventFilters, EventsPage, EventSummary } from './types'
+import { isEventDetail, isEventsPage, isHistogram, isStringArray } from './guards'
+import type {
+  EventDetail,
+  EventFilters,
+  EventsPage,
+  EventSummary,
+  Histogram,
+  HistogramBucketSize,
+} from './types'
 
 /** Rows per request. The API caps `limit` at 200; 100 balances round trips against payload size. */
 export const PAGE_SIZE = 100
@@ -47,4 +54,15 @@ export function fetchEvent(id: string, signal?: AbortSignal): Promise<EventDetai
 
 export function fetchAgents(signal?: AbortSignal): Promise<string[]> {
   return apiGet('/agents', isStringArray, { signal })
+}
+
+/** Event counts per time bucket, for the same filters as the list. */
+export function fetchHistogram(
+  filters: EventFilters,
+  bucket: HistogramBucketSize,
+  signal?: AbortSignal,
+): Promise<Histogram> {
+  const params = filtersToApiParams(filters)
+  params.set('bucket', bucket)
+  return apiGet('/events/histogram', isHistogram, { params, signal })
 }

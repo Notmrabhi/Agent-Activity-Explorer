@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { EventFilters, EventSummary } from '../api/types'
+import { EventsChart } from '../components/Chart/EventsChart'
 import { DetailPanel } from '../components/DetailPanel/DetailPanel'
 import { ResizeHandle } from '../components/DetailPanel/ResizeHandle'
 import { EventTable, type EventTableHandle } from '../components/EventTable/EventTable'
@@ -22,7 +23,7 @@ import { ShortcutsDialog } from '../components/ShortcutsDialog'
 import { Toolbar } from '../components/Toolbar/Toolbar'
 import { Button } from '../components/ui/Button'
 import { InboxIcon } from '../components/ui/icons'
-import { useEventDetail, useEventList, useNewestEventTime } from '../hooks/useEvents'
+import { useEventDetail, useEventList, useHistogram, useNewestEventTime } from '../hooks/useEvents'
 import { useExplorerUrlState } from '../hooks/useExplorerUrlState'
 import { useLiveEvents } from '../hooks/useLiveEvents'
 import { DOCKED_PANEL_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
@@ -107,6 +108,7 @@ export default function ExplorerPage() {
   } = url
   const list = useEventList(filters)
   const newestTime = useNewestEventTime()
+  const histogram = useHistogram(filters, newestTime.data)
   const { rows, total } = list
   const docked = useMediaQuery(DOCKED_PANEL_QUERY)
   const listSlow = useSlowFlag(list.isFetching)
@@ -397,6 +399,17 @@ export default function ExplorerPage() {
         className="flex min-h-0 flex-1"
       >
         <main className="flex min-w-0 flex-1 flex-col px-4 pt-4 md:px-6">
+          <div className="mb-3 shrink-0">
+            <EventsChart
+              buckets={histogram.buckets}
+              bucket={histogram.bucket}
+              isLoading={histogram.isPending}
+              isError={histogram.isError}
+              isStale={histogram.isPlaceholderData}
+              onRetry={() => void histogram.refetch()}
+              onSelectRange={setTimeRange}
+            />
+          </div>
           {listSlow && <SlowNotice onRetry={retrySlow} className="mb-3 shrink-0" />}
           <div className="relative flex min-h-0 flex-1 flex-col" ref={listAreaRef}>
             <NewEventsPill

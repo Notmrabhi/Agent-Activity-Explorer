@@ -1,4 +1,4 @@
-import type { EventFilters } from './types'
+import type { EventFilters, HistogramBucketSize } from './types'
 
 // Filters are normalised (trimmed search, sorted agents) so equivalent views share a cache entry.
 function normalized(filters: EventFilters) {
@@ -18,6 +18,8 @@ export const queryKeys = {
   eventsHead: (filters: EventFilters) => ['events-head', normalized(filters)] as const,
   // Not under 'events': invalidating the lists must not also refetch the time-range anchor.
   newestEvent: () => ['newest-event'] as const,
+  histogram: (filters: EventFilters, bucket: HistogramBucketSize) =>
+    ['histogram', normalized(filters), bucket] as const,
   event: (id: string) => ['event', id] as const,
   agents: () => ['agents'] as const,
 }
