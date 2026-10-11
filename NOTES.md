@@ -10,6 +10,8 @@ I built an event viewer for browsing and investigating more than 50,000 events. 
 
 Beyond the core requirements, I added keyboard navigation, dark mode, reduced-motion support and live mode. New events appear automatically when the user is at the top of the list. If they're reading older events, updates wait behind a “new events” pill instead of shifting the content. I also added a JSON tree viewer, a resizable detail panel and a time-range filter.
 
+I added an events-over-time chart from `/events/histogram`. It follows the current search and filters, and clicking or dragging on it sets the time range, so the list, URL and Back button stay in sync. The API leaves out empty buckets, so I fill them with zeros to keep the time axis even. In the detail panel, a Formatted view shows arguments and results as plain labels and values for people who don't read JSON, with JSON one click away.
+
 ## Trade-offs and what I'd improve
 
 The main challenge was handling live updates without disrupting the user's current position. The “new events” pill was added for this reason, so users can decide when to see new events instead of losing their place. AI suggested this approach, and it seemed like a better fit for the use case. I tested the behavior and checked the performance impact in DevTools.
@@ -20,7 +22,7 @@ I avoided automatically refetching every loaded page because the API can fail an
 
 ## Known issues
 
-The accessibility scan still reports issues with the copy buttons' accessible names and a page landmark. A timeout during a large response can show a JSON parsing error instead of a timeout message. Timestamp validation could also be stricter because I currently check that the value is a string rather than verifying that it's a valid date.
+The accessibility scan still reports issues with the copy buttons' accessible names and a page landmark. A timeout during a large response can show a JSON parsing error instead of a timeout message. Timestamp validation could also be stricter because I currently check that the value is a string rather than verifying that it's a valid date. The chart's range selection works with mouse and touch only (keyboard users use the Time filter), and the chart doesn't update in live mode.
 
 ## How I used AI
 
