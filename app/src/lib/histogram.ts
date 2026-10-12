@@ -195,3 +195,15 @@ export function bucketReady(
 ): boolean {
   return filters.from === null || filters.to !== null || newestIso !== undefined
 }
+
+/** While live, how often the chart asks the server for fresh counts. */
+export const LIVE_CHART_REFRESH_MS = 5000
+
+/**
+ * Whether new events can still land in the range: it has no end, or its end is after the newest
+ * event seen (ms). A range fully in the past never changes, so it needn't be refreshed.
+ */
+export function rangeReachesNow(to: string | null, newestMs: number | null): boolean {
+  if (to === null || newestMs === null) return true
+  return Date.parse(to) > newestMs
+}

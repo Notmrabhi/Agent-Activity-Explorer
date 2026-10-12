@@ -72,7 +72,7 @@ export function LiveToggle({ on, status, paused = false, onToggle }: LiveToggleP
         )}
       </button>
       <span role="status" className="sr-only" data-live-status={status}>
-        {on ? (isPaused ? 'Live updates paused while you scroll' : ANNOUNCEMENT[status]) : ''}
+        {on ? (isPaused ? 'Live updates paused while you read' : ANNOUNCEMENT[status]) : ''}
       </span>
     </>
   )

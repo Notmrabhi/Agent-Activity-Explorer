@@ -9,6 +9,7 @@ import {
   mergeStatusHistograms,
   previousRange,
   rangeForBuckets,
+  rangeReachesNow,
   rate,
   rateDelta,
   sumStatuses,
@@ -225,5 +226,19 @@ describe('agentRow', () => {
       ),
     ].sort(compareAgentRows)
     expect(rows.map((r) => r.agent)).toEqual(['noisy', 'busy', 'quiet'])
+  })
+})
+
+describe('rangeReachesNow', () => {
+  const newest = Date.parse('2026-10-11T12:40:00Z')
+
+  it('is true without an end, or before the newest event is known', () => {
+    expect(rangeReachesNow(null, newest)).toBe(true)
+    expect(rangeReachesNow('2026-10-08T18:00:00Z', null)).toBe(true)
+  })
+
+  it('is true while the end is still ahead, false once it has passed', () => {
+    expect(rangeReachesNow('2026-10-11T13:00:00Z', newest)).toBe(true)
+    expect(rangeReachesNow('2026-10-08T18:00:00Z', newest)).toBe(false)
   })
 })

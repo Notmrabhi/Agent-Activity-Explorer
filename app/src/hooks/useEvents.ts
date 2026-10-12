@@ -91,7 +91,7 @@ export function useNewestEventTime() {
 export function useStatusHistogram(
   filters: EventFilters,
   newestIso: string | null | undefined,
-  options: { enabled?: boolean; bucket?: HistogramBucketSize } = {},
+  options: { enabled?: boolean; bucket?: HistogramBucketSize; refetchInterval?: number } = {},
 ) {
   const bucket = options.bucket ?? chooseBucket(filters, newestIso)
   const enabled = (options.enabled ?? true) && bucketReady(filters, newestIso)
@@ -106,6 +106,7 @@ export function useStatusHistogram(
         placeholderData: keepPreviousData,
         staleTime: 60_000,
         enabled,
+        refetchInterval: options.refetchInterval,
       }
     }),
     combine: (results) => {

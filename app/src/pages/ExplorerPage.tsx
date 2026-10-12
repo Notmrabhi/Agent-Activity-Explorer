@@ -35,6 +35,7 @@ import { DOCKED_PANEL_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
 import { panelWidthStyle, usePanelWidth } from '../hooks/usePanelWidth'
 import { useSlowFlag } from '../hooks/useSlowFlag'
 import { STATUS_LABELS } from '../lib/format'
+import { LIVE_CHART_REFRESH_MS, rangeReachesNow } from '../lib/histogram'
 import { describeRangeInWords, formatAnchor } from '../lib/timeRange'
 import { hasActiveFilters, serializeExplorerParams } from '../lib/urlState'
 
@@ -113,7 +114,6 @@ export default function ExplorerPage() {
   } = url
   const list = useEventList(filters)
   const newestTime = useNewestEventTime()
-  const histogram = useStatusHistogram(filters, newestTime.data)
   const { rows, total } = list
   const docked = useMediaQuery(DOCKED_PANEL_QUERY)
   const listSlow = useSlowFlag(list.isFetching)
@@ -125,10 +125,18 @@ export default function ExplorerPage() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
   // Live events go straight in while the list is at the top; scrolled down, they wait behind the
-  // pill so nothing moves under the reader.
+  // pill so nothing moves under the reader. A focused row stays focused (see EventRow onFocus).
   const [liveOn, setLiveOn] = useState(false)
   const canInsertNow = useCallback(() => tableRef.current?.isAtTop() ?? true, [])
   const live = useLiveEvents(liveOn, filters, canInsertNow)
+  // While live, the chart keeps the view the user chose and refreshes it every 5 s (exact counts
+  // from the server), but only if new events can still land in it.
+  const liveChart = liveOn && rangeReachesNow(filters.to, live.newestMinute)
+  const histogram = useStatusHistogram(
+    filters,
+    newestTime.data,
+    liveChart ? { refetchInterval: LIVE_CHART_REFRESH_MS } : {},
+  )
   const revealNewestRef = useRef(false)
   const { showPending } = live
   const showNewEvents = useCallback(() => {
@@ -413,6 +421,14 @@ export default function ExplorerPage() {
               isStale={histogram.isStale}
               onRetry={() => void histogram.refetch()}
               onSelectRange={setTimeRange}
+              title={
+                liveChart ? (
+                  <span className="inline-flex items-center gap-1.5 font-medium text-fg">
+                    <span aria-hidden="true" className="size-2 rounded-full bg-ok" />
+                    Live
+                  </span>
+                ) : undefined
+              }
             />
           </div>
           {listSlow && <SlowNotice onRetry={retrySlow} className="mb-3 shrink-0" />}

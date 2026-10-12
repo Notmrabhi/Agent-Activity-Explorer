@@ -11,6 +11,7 @@ import {
   unseenEvents,
   type ListData,
 } from '../lib/live'
+import { BUCKET_MS } from '../lib/histogram'
 import { retryDelay, shouldRetry } from '../lib/queryClient'
 import { useLiveStream, type LiveStatus } from './useLiveStream'
 
@@ -35,6 +36,8 @@ export interface LiveEvents {
   refreshFailed: boolean
   /** Rows added in the last second, so the table can fade them in. */
   freshIds: ReadonlySet<string>
+  /** Start of the minute of the newest event the stream delivered (ms), or null before any. */
+  newestMinute: number | null
   showPending: () => Promise<boolean>
 }
 
@@ -240,9 +243,17 @@ export function useLiveEvents(
     [view],
   )
 
+  // The newest minute the stream has reached: drives the live chart window. Only changes once a
+  // minute, so it doesn't re-render per event.
+  const [newestMinute, setNewestMinute] = useState<number | null>(null)
   const status = useLiveStream(
     enabled,
     (event) => {
+      const time = Date.parse(event.timestamp)
+      if (!Number.isNaN(time)) {
+        const minute = Math.floor(time / BUCKET_MS['1m']) * BUCKET_MS['1m']
+        setNewestMinute((current) => (current === null || minute > current ? minute : current))
+      }
       if (!matchesFilters(event, filters)) return
       if (canMergeLocally(filters)) {
         const batch = batchRef.current
@@ -321,6 +332,7 @@ export function useLiveEvents(
     refreshing,
     refreshFailed: failedView === view,
     freshIds,
+    newestMinute: enabled ? newestMinute : null,
     showPending,
   }
 }
