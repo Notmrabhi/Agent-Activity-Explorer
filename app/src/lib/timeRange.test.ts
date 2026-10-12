@@ -65,9 +65,9 @@ describe('validateRange', () => {
 describe('describeRange', () => {
   it('reads like the table, and drops the day when both ends share it', () => {
     expect(describeRange('2026-10-09T11:00:00.000Z', '2026-10-09T12:00:00.000Z')).toBe(
-      'Oct 09 11:00 → 12:00',
+      'Oct 09, 11:00 → 12:00',
     )
-    expect(describeRange('2026-10-09T11:23:00.000Z', null)).toBe('Since Oct 09 11:23')
+    expect(describeRange('2026-10-09T11:23:00.000Z', null)).toBe('Since Oct 09, 11:23')
     expect(describeRange(null, null)).toBe('')
   })
 })

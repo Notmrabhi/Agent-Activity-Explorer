@@ -109,29 +109,29 @@ function labelParts(iso: string): { day: string; time: string } {
   return { day, time: time.replace(/\.000$/, '').replace(/^(\d{2}:\d{2}):00$/, '$1') }
 }
 
-/** "Oct 09 11:00 → 12:00", "Since Oct 09 11:23", "Until Oct 09 12:00". */
+/** "Oct 09, 11:00 → 12:00", "Since Oct 09, 11:23", "Until Oct 09, 12:00". */
 export function describeRange(from: string | null, to: string | null): string {
   const start = from === null ? null : labelParts(from)
   const end = to === null ? null : labelParts(to)
   if (start && end) {
-    const endText = start.day === end.day ? end.time : `${end.day} ${end.time}`
-    return `${start.day} ${start.time} → ${endText}`
+    const endText = start.day === end.day ? end.time : `${end.day}, ${end.time}`
+    return `${start.day}, ${start.time} → ${endText}`
   }
-  if (start) return `Since ${start.day} ${start.time}`
-  if (end) return `Until ${end.day} ${end.time}`
+  if (start) return `Since ${start.day}, ${start.time}`
+  if (end) return `Until ${end.day}, ${end.time}`
   return ''
 }
 
-/** "between Oct 09 11:00 and 12:00 UTC", "since …", "before …" (`to` is exclusive). */
+/** "between Oct 09, 11:00 and 12:00 UTC", "since …", "before …" (`to` is exclusive). */
 export function describeRangeInWords(from: string | null, to: string | null): string {
   const start = from === null ? null : labelParts(from)
   const end = to === null ? null : labelParts(to)
   if (start && end) {
-    const endText = start.day === end.day ? end.time : `${end.day} ${end.time}`
-    return `between ${start.day} ${start.time} and ${endText} UTC`
+    const endText = start.day === end.day ? end.time : `${end.day}, ${end.time}`
+    return `between ${start.day}, ${start.time} and ${endText} UTC`
   }
-  if (start) return `since ${start.day} ${start.time} UTC`
-  if (end) return `before ${end.day} ${end.time} UTC`
+  if (start) return `since ${start.day}, ${start.time} UTC`
+  if (end) return `before ${end.day}, ${end.time} UTC`
   return ''
 }
 
