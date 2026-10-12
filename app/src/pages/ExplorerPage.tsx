@@ -124,16 +124,10 @@ export default function ExplorerPage() {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
-  // Live events go straight in only at the top with no pointer or focus in the list; otherwise
-  // they wait behind the pill.
+  // Live events go straight in while the list is at the top; scrolled down, they wait behind the
+  // pill so nothing moves under the reader.
   const [liveOn, setLiveOn] = useState(false)
-  // :hover, because pointerenter/leave can miss a transition.
-  const listAreaRef = useRef<HTMLDivElement>(null)
-  const canInsertNow = useCallback(() => {
-    if (listAreaRef.current?.matches(':hover')) return false
-    if (document.activeElement?.closest('[role="grid"]')) return false
-    return tableRef.current?.isAtTop() ?? true
-  }, [])
+  const canInsertNow = useCallback(() => tableRef.current?.isAtTop() ?? true, [])
   const live = useLiveEvents(liveOn, filters, canInsertNow)
   const revealNewestRef = useRef(false)
   const { showPending } = live
@@ -358,6 +352,7 @@ export default function ExplorerPage() {
         onLoadMore={loadMore}
         onOpen={openFromList}
         resetKey={resetKey}
+        freshIds={liveOn ? live.freshIds : undefined}
       />
     )
   }
@@ -382,7 +377,12 @@ export default function ExplorerPage() {
       <AppHeader
         onOpenShortcuts={() => setShortcutsOpen(true)}
         actions={
-          <LiveToggle on={liveOn} status={live.status} onToggle={() => setLiveOn((on) => !on)} />
+          <LiveToggle
+            on={liveOn}
+            status={live.status}
+            paused={liveOn && (live.pendingCount > 0 || live.needsRefresh)}
+            onToggle={() => setLiveOn((on) => !on)}
+          />
         }
       />
       <Toolbar
@@ -416,7 +416,7 @@ export default function ExplorerPage() {
             />
           </div>
           {listSlow && <SlowNotice onRetry={retrySlow} className="mb-3 shrink-0" />}
-          <div className="relative flex min-h-0 flex-1 flex-col" ref={listAreaRef}>
+          <div className="relative flex min-h-0 flex-1 flex-col">
             <NewEventsPill
               count={liveOn ? live.pendingCount : 0}
               needsRefresh={liveOn && live.needsRefresh}

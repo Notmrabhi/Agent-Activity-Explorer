@@ -23,6 +23,9 @@ const SEARCH_CHECK_MS = 3000
 /** Stream events arriving within this window are added to the list together. */
 const BATCH_MS = 250
 
+/** How long a newly inserted row is marked as new (its fade-in runs inside this). */
+const FRESH_MS = 1200
+
 export interface LiveEvents {
   status: LiveStatus
   pendingCount: number
@@ -30,6 +33,8 @@ export interface LiveEvents {
   needsRefresh: boolean
   refreshing: boolean
   refreshFailed: boolean
+  /** Rows added in the last second, so the table can fade them in. */
+  freshIds: ReadonlySet<string>
   showPending: () => Promise<boolean>
 }
 
@@ -114,13 +119,35 @@ export function useLiveEvents(
     return current.view !== view || (current.events.length === 0 && !current.overflow)
   }
 
+  // Ids inserted in the last FRESH_MS, for the fade-in. A map of id → time so overlapping
+  // batches each finish their own animation.
+  const freshRef = useRef(new Map<string, number>())
+  const freshTimerRef = useRef(0)
+  const [freshIds, setFreshIds] = useState<ReadonlySet<string>>(() => new Set())
+  const markFresh = (events: EventSummary[]) => {
+    const now = Date.now()
+    for (const [id, time] of freshRef.current)
+      if (now - time > FRESH_MS) freshRef.current.delete(id)
+    for (const event of events) freshRef.current.set(event.id, now)
+    setFreshIds(new Set(freshRef.current.keys()))
+    window.clearTimeout(freshTimerRef.current)
+    freshTimerRef.current = window.setTimeout(() => {
+      freshRef.current.clear()
+      setFreshIds(new Set())
+    }, FRESH_MS)
+  }
+
+  // Set below, once showPending exists; receive() uses it to reload when too many waited.
+  const showPendingRef = useRef<() => Promise<boolean>>(async () => false)
+  const resumingRef = useRef(false)
+
   // `forView` drops answers that land after the filters changed or live was turned off.
   const receive = (forView: string, events: EventSummary[]) => {
     if (!enabled || forView !== view || events.length === 0) return
     const data = queryClient.getQueryData<ListData>(listKey)
     const fresh = data ? unseenEvents(data, events) : events
     if (fresh.length === 0) return
-    if (data && !(nothingWaiting() && canInsertNow())) {
+    if (data && !canInsertNow()) {
       updateWaiting(addWaiting(waitingRef.current, view, fresh))
     } else if (!data || listBusy()) {
       const held = heldRef.current.view === view ? heldRef.current.events : []
@@ -129,8 +156,27 @@ export function useLiveEvents(
         heldRef.current = { view, events: [] }
         updateWaiting(addWaiting(waitingRef.current, view, [], true))
       }
+    } else if (!nothingWaiting()) {
+      // Back at the top and idle with events waiting: show them now, with the new ones.
+      if (waitingRef.current.overflow) {
+        // Too many were waiting: reload the newest page (its catch-up brings these back).
+        if (!resumingRef.current) {
+          resumingRef.current = true
+          void showPendingRef.current().finally(() => {
+            resumingRef.current = false
+          })
+        }
+      } else {
+        const waiting = waitingRef.current.events
+        updateWaiting({ view, events: [], overflow: false })
+        queryClient.setQueryData<ListData>(listKey, (old) =>
+          prependEvents(old, [...waiting, ...fresh]),
+        )
+        markFresh([...waiting, ...fresh])
+      }
     } else {
       queryClient.setQueryData<ListData>(listKey, (old) => prependEvents(old, fresh))
+      markFresh(fresh)
     }
   }
 
@@ -263,6 +309,9 @@ export function useLiveEvents(
     if (head) void handlers.current.catchUp()
     return true
   }, [queryClient, view, filters, updateWaiting])
+  useLayoutEffect(() => {
+    showPendingRef.current = showPending
+  })
 
   const visible = waiting.view === view ? waiting : null
   return {
@@ -271,6 +320,7 @@ export function useLiveEvents(
     needsRefresh: visible?.overflow ?? false,
     refreshing,
     refreshFailed: failedView === view,
+    freshIds,
     showPending,
   }
 }

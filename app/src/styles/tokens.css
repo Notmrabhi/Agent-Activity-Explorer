@@ -94,6 +94,7 @@
   --animate-shimmer: shimmer 1.4s ease-in-out infinite;
   --animate-spin: spin 0.9s linear infinite;
   --animate-panel-in: panel-in 200ms var(--ease-out);
+  --animate-row-in: row-in 900ms var(--ease-out);
 
   @keyframes shimmer {
     0% {
@@ -106,6 +107,17 @@
   @keyframes spin {
     to {
       transform: rotate(360deg);
+    }
+  }
+  /* A live row arriving: fades in on a soft accent tint that fades out. */
+  @keyframes row-in {
+    from {
+      opacity: 0;
+      background-color: var(--color-accent-soft);
+    }
+    30% {
+      opacity: 1;
+      background-color: var(--color-accent-soft);
     }
   }
   @keyframes panel-in {

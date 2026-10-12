@@ -49,6 +49,8 @@ export interface EventTableProps {
   onOpen: (id: string, options: { replace: boolean }) => void
   /** Changes whenever the filters change: scroll back to the top and reset the active row. */
   resetKey: string
+  /** Live rows that just arrived, faded in. */
+  freshIds?: ReadonlySet<string>
   ref?: Ref<EventTableHandle>
 }
 
@@ -93,6 +95,7 @@ export function EventTable({
   onLoadMore,
   onOpen,
   resetKey,
+  freshIds,
   ref,
 }: EventTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -397,6 +400,7 @@ export function EventTable({
                     top={index * ROW_HEIGHT}
                     selected={event.id === selectedId}
                     active={index === active}
+                    isNew={freshIds?.has(event.id) ?? false}
                     onActivate={handleActivate}
                     onOpen={handleOpenRow}
                   />

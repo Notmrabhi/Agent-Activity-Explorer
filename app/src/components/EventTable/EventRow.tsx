@@ -12,6 +12,8 @@ export interface EventRowProps {
   top: number
   selected: boolean
   active: boolean
+  /** Just arrived through live mode: fades in. */
+  isNew: boolean
   /** Must be stable: rows are memoised. */
   onActivate: (index: number) => void
   /** Must be stable: rows are memoised. */
@@ -25,6 +27,7 @@ export const EventRow = memo(function EventRow({
   top,
   selected,
   active,
+  isNew,
   onActivate,
   onOpen,
 }: EventRowProps) {
@@ -53,7 +56,7 @@ export const EventRow = memo(function EventRow({
       style={{ transform: `translateY(${top}px)` }}
       className={`${ROW_GRID} absolute inset-x-0 top-0 h-(--row-height) cursor-pointer border-b border-border text-base focus-visible:-outline-offset-2 ${
         selected ? 'bg-selected ring-1 ring-accent ring-inset' : 'hover:bg-hover'
-      }`}
+      } ${isNew ? 'motion-safe:animate-row-in' : ''} motion-safe:transition-transform motion-safe:duration-200`}
     >
       <div role="gridcell" className="font-mono text-data whitespace-nowrap text-muted">
         {formatTimestampUtc(event.timestamp)}

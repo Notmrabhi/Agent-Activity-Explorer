@@ -3,6 +3,8 @@ import type { LiveStatus } from '../../hooks/useLiveStream'
 export interface LiveToggleProps {
   on: boolean
   status: LiveStatus
+  /** On, but new events are waiting because the list is scrolled down. */
+  paused?: boolean
   onToggle: () => void
 }
 
@@ -29,14 +31,21 @@ const DOT: Record<LiveStatus, string> = {
 }
 
 /** Turns live updates from /stream on and off, and shows the connection state. */
-export function LiveToggle({ on, status, onToggle }: LiveToggleProps) {
+export function LiveToggle({ on, status, paused = false, onToggle }: LiveToggleProps) {
+  const isPaused = on && paused && status === 'live'
   return (
     <>
       <button
         type="button"
         aria-pressed={on}
         onClick={onToggle}
-        title={on ? 'Stop live updates' : 'Show new events as they arrive'}
+        title={
+          isPaused
+            ? 'Paused while you are scrolled down. Scroll to the top to resume.'
+            : on
+              ? 'Stop live updates'
+              : 'Show new events as they arrive'
+        }
         className={`inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-sm font-medium transition-colors duration-(--duration-fast) ${
           on
             ? 'border-accent bg-accent-soft text-accent-text'
@@ -44,8 +53,8 @@ export function LiveToggle({ on, status, onToggle }: LiveToggleProps) {
         }`}
       >
         <span aria-hidden="true" className="relative inline-flex size-2">
-          <span className={`size-2 rounded-full ${DOT[status]}`} />
-          {status === 'live' && (
+          <span className={`size-2 rounded-full ${isPaused ? 'bg-blocked' : DOT[status]}`} />
+          {status === 'live' && !isPaused && (
             <span className="absolute inset-0 rounded-full bg-ok opacity-60 motion-safe:animate-ping" />
           )}
         </span>
@@ -56,9 +65,14 @@ export function LiveToggle({ on, status, onToggle }: LiveToggleProps) {
             {STATUS_TEXT[status]}
           </span>
         )}
+        {isPaused && (
+          <span aria-hidden="true" className="text-xs font-normal text-muted">
+            · paused
+          </span>
+        )}
       </button>
       <span role="status" className="sr-only" data-live-status={status}>
-        {on ? ANNOUNCEMENT[status] : ''}
+        {on ? (isPaused ? 'Live updates paused while you scroll' : ANNOUNCEMENT[status]) : ''}
       </span>
     </>
   )
