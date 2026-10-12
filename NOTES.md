@@ -42,3 +42,25 @@ I tested the generated code rather than assuming it was correct. For example, I 
 Testing exposed issues with keyboard focus and tooltips, while browser tests helped catch bugs in live mode, including new events disappearing when another page loaded.
 
 Overall, AI helped speed up implementation, but the final behavior and performance still needed to be tested and verified.
+
+## This branch: `live-improvements` (after the submission)
+
+I made this branch after submitting, so `main` stays exactly as it was at the deadline.
+
+While using live mode myself, I found a real bug: once I scrolled down and new events started waiting behind the "new events" button, they never came in on their own again, even after I scrolled back to the top. You had to click the button. Hovering the mouse over the table also paused live mode, which felt like it had stopped for no reason. My tests had checked each situation on its own, but not the order a real user follows (scroll down, then back up), which is why it slipped through.
+
+What this branch changes:
+
+**Bug fix (live mode)**
+
+- Live mode pauses only while you are scrolled down, and the Live button says "paused" so it's clear why. Back at the top, the waiting events come in by themselves.
+- New rows fade in gently instead of jumping in, and a focused row keeps its focus while new rows arrive above it.
+
+**New feature: the chart updates live**
+
+- Before, the events chart only changed when you changed the filters. Now, while Live is on, it updates by itself every few seconds, so you can watch the bars grow as events arrive.
+- It keeps the view you chose. It only updates when the time range still includes "now"; a range fully in the past doesn't refresh, because nothing new can land there.
+
+**Small fix**
+
+- The time filter now reads "Oct 11, 10:00 → 13:00", with a comma after the date.
